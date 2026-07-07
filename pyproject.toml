@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "attendance_dashboard"
+version = "0.1.0"
+description = "Offline WhatsApp Attendance & Activity Analytics Dashboard"
+readme = "README.md"
+requires-python = ">=3.11"
+
+authors = [
+    { name = "Your Name" }
+]
+
+dependencies = [
+    "pandas>=2.2.0",
+    "streamlit>=1.46.0",
+    "plotly>=6.0.0",
+    "openpyxl>=3.1.5",
+    "reportlab>=4.4.0",
+    "pytest>=8.4.0",
+    "python-dotenv>=1.1.0",
+    "pyinstaller>=6.15.0"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+python_files = [
+    "test_*.py"
+]
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
