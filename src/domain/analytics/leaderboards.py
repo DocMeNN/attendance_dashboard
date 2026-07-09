@@ -1,27 +1,44 @@
-# filepath: src/domain/analytics/leaderboards.py
+# src/domain/analytics/leaderboards.py
 
 """
-Domain Leaderboard Analytics.
+Domain Leaderboard Analytics
 
-This module contains pure business logic for ranking members based on
-attendance and activity metrics.
+Purpose
+-------
+Provides pure business logic for ranking attendance and activity
+participation across members.
+
+Responsibilities
+----------------
+- Rank attendees by attendance frequency.
+- Rank attendees by lateness frequency.
+- Rank senders by activity frequency.
+- Return top-ranked entries.
+- Locate a participant's ranking.
 
 Rules
 -----
-- No pandas
-- No Streamlit
-- No file I/O
-- No database access
-- No logging
+- No pandas.
+- No Streamlit.
+- No file I/O.
+- No database access.
+- No infrastructure dependencies.
 
-All functions operate on immutable Domain models.
+Notes
+-----
+- Operates only on immutable Domain models.
+- Rankings are returned in descending order.
 """
 
 from __future__ import annotations
 
+# Standard library imports
 from collections import Counter
 from typing import Iterable
 
+# Third-party imports
+# None
+# Local imports
 from src.domain.enums.attendance_type import AttendanceType
 from src.domain.models.activity_event import ActivityEvent
 from src.domain.models.attendance_event import AttendanceEvent
@@ -31,23 +48,15 @@ def rank_attendance(
     attendance_events: Iterable[AttendanceEvent],
 ) -> tuple[tuple[str, int], ...]:
     """
-    Rank members by the number of attended sessions.
+    Rank attendees by attendance count.
 
-    Present and Late are both counted as attendance.
-
-    Returns
-    -------
-    tuple[tuple[str, int], ...]
-        (member_id, attendance_count) sorted descending.
+    PRESENT and LATE are both considered attendance.
     """
     counter: Counter[str] = Counter()
 
     for event in attendance_events:
-        if event.attendance_type in (
-            AttendanceType.PRESENT,
-            AttendanceType.LATE,
-        ):
-            counter[event.member_id] += 1
+        if event.is_present or event.is_late:
+            counter[event.attendee] += 1
 
     return tuple(counter.most_common())
 
@@ -56,15 +65,13 @@ def rank_lateness(
     attendance_events: Iterable[AttendanceEvent],
 ) -> tuple[tuple[str, int], ...]:
     """
-    Rank members by lateness count.
-
-    Higher values indicate more late arrivals.
+    Rank attendees by lateness count.
     """
     counter: Counter[str] = Counter()
 
     for event in attendance_events:
-        if event.attendance_type == AttendanceType.LATE:
-            counter[event.member_id] += 1
+        if event.attendance_type is AttendanceType.LATE:
+            counter[event.attendee] += 1
 
     return tuple(counter.most_common())
 
@@ -73,12 +80,12 @@ def rank_activities(
     activity_events: Iterable[ActivityEvent],
 ) -> tuple[tuple[str, int], ...]:
     """
-    Rank members by number of recorded activities.
+    Rank message senders by activity count.
     """
     counter: Counter[str] = Counter()
 
     for event in activity_events:
-        counter[event.member_id] += 1
+        counter[event.sender] += 1
 
     return tuple(counter.most_common())
 
@@ -88,7 +95,7 @@ def top_members(
     limit: int = 10,
 ) -> tuple[tuple[str, int], ...]:
     """
-    Return the top N ranked members.
+    Return the top-ranked participants.
 
     Parameters
     ----------
@@ -96,31 +103,29 @@ def top_members(
         Ranking produced by one of the rank_* functions.
 
     limit:
-        Maximum number of results.
-
-    Returns
-    -------
-    tuple[tuple[str, int], ...]
+        Maximum number of entries to return.
     """
     return tuple(rankings)[: max(limit, 0)]
 
 
-def member_rank(
-    member_id: str,
+def participant_rank(
+    participant: str,
     rankings: Iterable[tuple[str, int]],
 ) -> int | None:
     """
-    Return a member's ranking position.
+    Return the ranking position of a participant.
 
-    Positions start at 1.
+    Ranking positions start at 1.
 
     Returns
     -------
     int | None
-        Ranking position or None if member is not ranked.
+        Ranking position if found, otherwise None.
     """
-    for position, (current_member, _) in enumerate(rankings, start=1):
-        if current_member == member_id:
+    normalized = participant.casefold()
+
+    for position, (current, _) in enumerate(rankings, start=1):
+        if current.casefold() == normalized:
             return position
 
     return None

@@ -29,11 +29,7 @@ comparisons
     Comparative analytics between sessions and reporting periods.
 """
 
-from . import attendance
-from . import comparisons
-from . import leaderboards
-from . import sessions
-from . import statistics
+from . import attendance, comparisons, leaderboards, sessions, statistics
 
 __all__ = [
     "attendance",

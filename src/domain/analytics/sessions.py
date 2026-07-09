@@ -1,70 +1,44 @@
-# filepath: src/domain/analytics/sessions.py
+# src/domain/analytics/sessions.py
 
 """
-Domain Session Analytics.
+Domain Session Analytics
 
-This module contains pure business logic for analysing sessions.
+Purpose
+-------
+Provides pure business logic for analysing meeting sessions.
+
+Responsibilities
+----------------
+- Count sessions.
+- Calculate aggregate session metrics.
+- Locate earliest and latest sessions.
+- Calculate average session duration.
+- Remain technology independent.
 
 Rules
 -----
-- No pandas
-- No Streamlit
-- No file I/O
-- No database access
-- No logging
+- No pandas.
+- No Streamlit.
+- No file I/O.
+- No database access.
+- No infrastructure dependencies.
 
-All functions operate on immutable Domain models.
+Notes
+-----
+- Operates only on immutable Domain models.
+- Assumes Session objects are valid.
 """
 
 from __future__ import annotations
 
+# Standard library imports
+from datetime import timedelta
 from typing import Iterable
 
-from src.domain.enums.session_status import SessionStatus
+# Third-party imports
+# None
+# Local imports
 from src.domain.models.session import Session
-
-
-def get_completed_sessions(
-    sessions: Iterable[Session],
-) -> tuple[Session, ...]:
-    """
-    Return all completed sessions.
-
-    Parameters
-    ----------
-    sessions:
-        Collection of Session objects.
-
-    Returns
-    -------
-    tuple[Session, ...]
-        Completed sessions.
-    """
-    return tuple(
-        session for session in sessions if session.status == SessionStatus.COMPLETED
-    )
-
-
-def get_pending_sessions(
-    sessions: Iterable[Session],
-) -> tuple[Session, ...]:
-    """
-    Return all pending sessions.
-    """
-    return tuple(
-        session for session in sessions if session.status == SessionStatus.PENDING
-    )
-
-
-def get_cancelled_sessions(
-    sessions: Iterable[Session],
-) -> tuple[Session, ...]:
-    """
-    Return all cancelled sessions.
-    """
-    return tuple(
-        session for session in sessions if session.status == SessionStatus.CANCELLED
-    )
 
 
 def count_sessions(
@@ -76,50 +50,72 @@ def count_sessions(
     return sum(1 for _ in sessions)
 
 
-def calculate_completion_rate(
-    sessions: Iterable[Session],
-) -> float:
-    """
-    Calculate the percentage of completed sessions.
-
-    Completion Rate =
-        Completed Sessions / Total Sessions × 100
-    """
-    sessions = tuple(sessions)
-
-    if not sessions:
-        return 0.0
-
-    completed = len(get_completed_sessions(sessions))
-
-    return (completed / len(sessions)) * 100.0
-
-
 def get_latest_session(
     sessions: Iterable[Session],
 ) -> Session | None:
     """
-    Return the most recent session.
-
-    Assumes Session.date uniquely identifies chronological order.
+    Return the latest session by session date.
     """
     sessions = tuple(sessions)
 
     if not sessions:
         return None
 
-    return max(sessions, key=lambda session: session.date)
+    return max(
+        sessions,
+        key=lambda session: session.session_date,
+    )
 
 
 def get_earliest_session(
     sessions: Iterable[Session],
 ) -> Session | None:
     """
-    Return the earliest session.
+    Return the earliest session by session date.
     """
     sessions = tuple(sessions)
 
     if not sessions:
         return None
 
-    return min(sessions, key=lambda session: session.date)
+    return min(
+        sessions,
+        key=lambda session: session.session_date,
+    )
+
+
+def calculate_average_duration(
+    sessions: Iterable[Session],
+) -> timedelta:
+    """
+    Return the average duration of all sessions.
+    """
+    sessions = tuple(sessions)
+
+    if not sessions:
+        return timedelta(0)
+
+    total = sum(
+        (session.duration for session in sessions),
+        start=timedelta(0),
+    )
+
+    return total / len(sessions)
+
+
+def total_attendance_events(
+    sessions: Iterable[Session],
+) -> int:
+    """
+    Return the total number of attendance events.
+    """
+    return sum(session.attendance_count for session in sessions)
+
+
+def total_activity_events(
+    sessions: Iterable[Session],
+) -> int:
+    """
+    Return the total number of activity events.
+    """
+    return sum(session.activity_count for session in sessions)

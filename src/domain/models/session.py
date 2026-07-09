@@ -28,7 +28,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Final
 
 from .activity_event import ActivityEvent
 from .attendance_event import AttendanceEvent

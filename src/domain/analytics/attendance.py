@@ -1,104 +1,127 @@
 # src/domain/analytics/attendance.py
 
 """
-Domain Attendance Analytics.
+Domain Attendance Analytics
 
-This module contains pure business logic for calculating attendance
-statistics and summaries.
+Purpose
+-------
+Provides pure business logic for attendance-related calculations.
+
+Responsibilities
+----------------
+- Filter attendance events.
+- Calculate attendance statistics.
+- Count attendance classifications.
+- Remain technology independent.
 
 Rules
 -----
-- No pandas
-- No Streamlit
-- No file I/O
-- No database access
-- No logging
+- No pandas.
+- No Streamlit.
+- No file I/O.
+- No database access.
+- No infrastructure dependencies.
 
-All functions operate on immutable Domain models.
+Notes
+-----
+- Operates only on immutable Domain models.
+- Does not construct AttendanceSummary objects.
+- AttendanceSummary is derived from a Session model.
 """
 
 from __future__ import annotations
 
+# Standard library imports
 from collections import Counter
 from typing import Iterable
 
+# Third-party imports
+# None
+# Local imports
 from src.domain.enums.attendance_type import AttendanceType
 from src.domain.models.attendance_event import AttendanceEvent
-from src.domain.models.attendance_summary import AttendanceSummary
 from src.domain.models.member import Member
+
+
+def get_present_events(
+    attendance_events: Iterable[AttendanceEvent],
+) -> tuple[AttendanceEvent, ...]:
+    """
+    Return attendance events marked as present.
+    """
+    return tuple(event for event in attendance_events if event.is_present)
+
+
+def get_late_events(
+    attendance_events: Iterable[AttendanceEvent],
+) -> tuple[AttendanceEvent, ...]:
+    """
+    Return attendance events marked as late.
+    """
+    return tuple(event for event in attendance_events if event.is_late)
+
+
+def get_absent_events(
+    attendance_events: Iterable[AttendanceEvent],
+) -> tuple[AttendanceEvent, ...]:
+    """
+    Return attendance events marked as absent.
+    """
+    return tuple(event for event in attendance_events if event.is_absent)
 
 
 def get_attendees(
     attendance_events: Iterable[AttendanceEvent],
-) -> tuple[AttendanceEvent, ...]:
+) -> tuple[str, ...]:
     """
-    Return every attendance event where the member attended.
-
-    Parameters
-    ----------
-    attendance_events:
-        Collection of attendance events.
-
-    Returns
-    -------
-    tuple[AttendanceEvent, ...]
-        Attendance events marked as PRESENT or LATE.
+    Return unique attendee names preserving
+    chronological order.
     """
-    return tuple(
-        event
-        for event in attendance_events
-        if event.attendance_type in (AttendanceType.PRESENT, AttendanceType.LATE)
-    )
+    seen: set[str] = set()
+    attendees: list[str] = []
 
+    for event in attendance_events:
+        if event.is_absent:
+            continue
 
-def get_absentees(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[AttendanceEvent, ...]:
-    """
-    Return attendance events marked absent.
-    """
-    return tuple(
-        event
-        for event in attendance_events
-        if event.attendance_type == AttendanceType.ABSENT
-    )
+        key = event.attendee.casefold()
 
+        if key not in seen:
+            seen.add(key)
+            attendees.append(event.attendee)
 
-def get_late_members(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[AttendanceEvent, ...]:
-    """
-    Return attendance events marked late.
-    """
-    return tuple(
-        event
-        for event in attendance_events
-        if event.attendance_type == AttendanceType.LATE
-    )
+    return tuple(attendees)
 
 
 def calculate_attendance_rate(
     attendance_events: Iterable[AttendanceEvent],
+    expected_attendees: int,
 ) -> float:
     """
-    Calculate attendance percentage for a session.
+    Calculate attendance percentage.
 
-    Attendance Rate =
-        (Present + Late) / Total × 100
+    Parameters
+    ----------
+    attendance_events:
+        Attendance events.
+
+    expected_attendees:
+        Total expected attendees.
 
     Returns
     -------
     float
         Attendance percentage.
     """
-    events = tuple(attendance_events)
-
-    if not events:
+    if expected_attendees <= 0:
         return 0.0
 
-    attendees = len(get_attendees(events))
+    present = len(get_attendees(attendance_events))
 
-    return (attendees / len(events)) * 100.0
+    return round(
+        (present / expected_attendees) * 100,
+        2,
+    )
 
 
 def calculate_member_attendance_rate(
@@ -106,39 +129,33 @@ def calculate_member_attendance_rate(
     attendance_events: Iterable[AttendanceEvent],
 ) -> float:
     """
-    Calculate one member's attendance percentage.
+    Calculate attendance rate for a member.
+
+    The current domain model represents attendance
+    using attendee names, so comparison is performed
+    using normalized names.
     """
     member_events = tuple(
-        event for event in attendance_events if event.member_id == member.id
+        event
+        for event in attendance_events
+        if event.attendee.casefold() == member.normalized_name
     )
 
     if not member_events:
         return 0.0
 
-    attended = sum(
-        event.attendance_type in (AttendanceType.PRESENT, AttendanceType.LATE)
-        for event in member_events
+    attended = sum(event.is_present or event.is_late for event in member_events)
+
+    return round(
+        (attended / len(member_events)) * 100,
+        2,
     )
 
-    return (attended / len(member_events)) * 100.0
 
-
-def summarize_attendance(
+def count_attendance_types(
     attendance_events: Iterable[AttendanceEvent],
-) -> AttendanceSummary:
+) -> Counter[AttendanceType]:
     """
-    Build an AttendanceSummary from attendance events.
+    Count attendance events by AttendanceType.
     """
-    events = tuple(attendance_events)
-
-    counts = Counter(event.attendance_type for event in events)
-
-    total = len(events)
-
-    return AttendanceSummary(
-        total_members=total,
-        present=counts.get(AttendanceType.PRESENT, 0),
-        late=counts.get(AttendanceType.LATE, 0),
-        absent=counts.get(AttendanceType.ABSENT, 0),
-        attendance_rate=calculate_attendance_rate(events),
-    )
+    return Counter(event.attendance_type for event in attendance_events)

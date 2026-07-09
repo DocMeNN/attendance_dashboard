@@ -3,31 +3,35 @@
 """
 Member Domain Model
 
-Purpose:
-    Represents a unique OYBS member within the domain.
+Purpose
+-------
+Represents a unique OYBS member within the domain.
 
-Responsibilities:
-    - Store member identity.
-    - Validate member information.
-    - Provide normalized member data.
-    - Remain technology independent.
+Responsibilities
+----------------
+- Store member identity.
+- Validate member information.
+- Provide normalized member data.
+- Remain technology independent.
 
-Notes:
-    - Immutable.
-    - Independent of attendance, activities and sessions.
-    - No UI, pandas or infrastructure dependencies.
-
-Author:
-    OYBS Attendance Dashboard
-
-Created:
-    July 2026
+Notes
+-----
+- Immutable.
+- Independent of attendance, activities and sessions.
+- No UI, pandas or infrastructure dependencies.
 """
 
 from __future__ import annotations
 
+# Standard library imports
 from dataclasses import dataclass
 from typing import Final
+
+# Third-party imports
+# None
+
+# Local imports
+# None
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,21 +39,22 @@ class Member:
     """
     Immutable domain representation of a member.
 
-    Attributes:
-        name:
-            Display name of the member.
+    Attributes
+    ----------
+    name:
+        Display name of the member.
 
-        member_id:
-            Optional unique identifier.
+    member_id:
+        Optional unique identifier.
 
-        phone_number:
-            Optional phone number.
+    phone_number:
+        Optional phone number.
 
-        unit:
-            Optional church/unit/department.
+    unit:
+        Optional church/unit/department.
 
-        is_active:
-            Indicates whether the member is active.
+    is_active:
+        Indicates whether the member is active.
     """
 
     name: str
@@ -74,7 +79,7 @@ class Member:
         object.__setattr__(self, "name", name)
 
         if self.member_id is not None:
-            member_id = self.member_id.strip()
+            member_id: str | None = self.member_id.strip()
 
             if not member_id:
                 member_id = None
@@ -82,7 +87,7 @@ class Member:
             object.__setattr__(self, "member_id", member_id)
 
         if self.phone_number is not None:
-            phone = self.phone_number.strip()
+            phone: str | None = self.phone_number.strip()
 
             if not phone:
                 phone = None
@@ -90,7 +95,7 @@ class Member:
             object.__setattr__(self, "phone_number", phone)
 
         if self.unit is not None:
-            unit = self.unit.strip()
+            unit: str | None = self.unit.strip()
 
             if not unit:
                 unit = None
@@ -118,7 +123,6 @@ class Member:
     @property
     def initials(self) -> str:
         """Return member initials."""
-
         return "".join(word[0].upper() for word in self.name.split() if word)
 
     @property

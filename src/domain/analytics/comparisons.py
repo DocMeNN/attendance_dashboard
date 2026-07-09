@@ -31,7 +31,6 @@ from typing import Iterable
 
 # Third-party imports
 # None
-
 # Local imports
 from src.domain.models.attendance_summary import AttendanceSummary
 
