@@ -1,0 +1,544 @@
+[33mtag cp-005[m
+Tagger: DocMe <meosamuede@gmail.com>
+Date:   Thu Jul 9 19:56:05 2026 +0100
+
+Checkpoint 005 - Infrastructure Data Engine
+
+[33mcommit bda072c6b6439170599a6e027a4b38e3bc2f5de6[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;33mtag: [m[1;33mcp-005[m[33m)[m
+Author: DocMe <meosamuede@gmail.com>
+Date:   Thu Jul 9 19:55:40 2026 +0100
+
+    CP-005: Complete Infrastructure Data Engine
+
+[1mdiff --git a/src/infrastructure/data_engine/cleaner.py b/src/infrastructure/data_engine/cleaner.py[m
+[1mindex e69de29..014f4eb 100644[m
+[1m--- a/src/infrastructure/data_engine/cleaner.py[m
+[1m+++ b/src/infrastructure/data_engine/cleaner.py[m
+[36m@@ -0,0 +1,236 @@[m
+[32m+[m[32m# src/infrastructure/data_engine/cleaner.py[m
+[32m+[m
+[32m+[m[32m"""[m
+[32m+[m[32mNormalize parsed WhatsApp records.[m
+[32m+[m
+[32m+[m[32mThis module performs infrastructure-level normalization on[m
+[32m+[m[32m``RawMessageRecord`` instances and produces immutable[m
+[32m+[m[32m``CleanMessageRecord`` instances.[m
+[32m+[m
+[32m+[m[32mResponsibilities[m
+[32m+[m[32m----------------[m
+[32m+[m[32m- Normalize sender names.[m
+[32m+[m[32m- Normalize message text.[m
+[32m+[m[32m- Normalize whitespace.[m
+[32m+[m[32m- Detect phone numbers.[m
+[32m+[m[32m- Detect WhatsApp placeholder messages.[m
+[32m+[m
+[32m+[m[32mThis module intentionally performs NO business logic.[m
+[32m+[m
+[32m+[m[32mBusiness concepts such as attendance, activities, sessions,[m
+[32m+[m[32mor analytics belong to the Domain layer.[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mfrom __future__ import annotations[m
+[32m+[m
+[32m+[m[32mimport logging[m
+[32m+[m[32mfrom collections.abc import Iterable[m
+[32m+[m
+[32m+[m[32mfrom .models import ([m
+[32m+[m[32m    CleanMessageRecord,[m
+[32m+[m[32m    RawMessageRecord,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom .patterns import ([m
+[32m+[m[32m    DELETED_MESSAGE_PATTERN,[m
+[32m+[m[32m    MEDIA_OMITTED_PATTERN,[m
+[32m+[m[32m    PHONE_NUMBER_PATTERN,[m
+[32m+[m[32m    WHITESPACE_PATTERN,[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32m__all__ = [[m
+[32m+[m[32m    "clean_records",[m
+[32m+[m[32m][m
+[32m+[m
+[32m+[m[32mlogger = logging.getLogger(__name__)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef clean_records([m
+[32m+[m[32m    records: Iterable[RawMessageRecord],[m
+[32m+[m[32m) -> list[CleanMessageRecord]:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Normalize parsed message records.[m
+[32m+[m
+[32m+[m[32m    Parameters[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    records[m
+[32m+[m[32m        Parsed infrastructure records.[m
+[32m+[m
+[32m+[m[32m    Returns[m
+[32m+[m[32m    -------[m
+[32m+[m[32m    list[CleanMessageRecord][m
+[32m+[m[32m        Normalized infrastructure records.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    records = list(records)[m
+[32m+[m
+[32m+[m[32m    logger.info([m
+[32m+[m[32m        "Cleaning %d parsed records.",[m
+[32m+[m[32m        len(records),[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    cleaned = [_clean_record(record) for record in records][m
+[32m+[m
+[32m+[m[32m    logger.info([m
+[32m+[m[32m        "Successfully cleaned %d records.",[m
+[32m+[m[32m        len(cleaned),[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    return cleaned[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _clean_record([m
+[32m+[m[32m    record: RawMessageRecord,[m
+[32m+[m[32m) -> CleanMessageRecord:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Normalize a single parsed record.[m
+[32m+[m
+[32m+[m[32m    This function performs infrastructure-level normalization[m
+[32m+[m[32m    without applying any business rules.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    sender = _normalize_sender([m
+[32m+[m[32m        record.sender,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    message = _normalize_message([m
+[32m+[m[32m        record.message,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    return CleanMessageRecord([m
+[32m+[m[32m        timestamp=record.timestamp,[m
+[32m+[m[32m        sender=sender,[m
+[32m+[m[32m        message=message,[m
+[32m+[m[32m        source_line=record.source_line,[m
+[32m+[m[32m        sender_is_phone_number=_is_phone_number([m
+[32m+[m[32m            sender,[m
+[32m+[m[32m        ),[m
+[32m+[m[32m        is_deleted_message=_is_deleted_message([m
+[32m+[m[32m            message,[m
+[32m+[m[32m        ),[m
+[32m+[m[32m        has_media_omitted=_has_media_placeholder([m
+[32m+[m[32m            message,[m
+[32m+[m[32m        ),[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _normalize_sender([m
+[32m+[m[32m    sender: str,[m
+[32m+[m[32m) -> str:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Normalize sender whitespace.[m
+[32m+[m
+[32m+[m[32m    Consecutive whitespace characters are collapsed into a[m
+[32m+[m[32m    single space and leading/trailing whitespace is removed.[m
+[32m+[m
+[32m+[m[32m    Parameters[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    sender[m
+[32m+[m[32m        Raw sender name or phone number.[m
+[32m+[m
+[32m+[m[32m    Returns[m
+[32m+[m[32m    -------[m
+[32m+[m[32m    str[m
+[32m+[m[32m        Normalized sender.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    return WHITESPACE_PATTERN.sub([m
+[32m+[m[32m        " ",[m
+[32m+[m[32m        sender,[m
+[32m+[m[32m    ).strip()[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _normalize_message([m
+[32m+[m[32m    message: str,[m
+[32m+[m[32m) -> str:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Normalize message text while preserving paragraph structure.[m
+[32m+[m
+[32m+[m[32m    Normalization performed[m
+[32m+[m[32m    -----------------------[m
+[32m+[m[32m    - Strip leading and trailing whitespace.[m
+[32m+[m[32m    - Collapse consecutive whitespace within each line.[m
+[32m+[m[32m    - Remove leading and trailing whitespace from each line.[m
+[32m+[m[32m    - Remove empty lines.[m
+[32m+[m[32m    - Preserve the original line ordering.[m
+[32m+[m
+[32m+[m[32m    Parameters[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    message[m
+[32m+[m[32m        Raw message text.[m
+[32m+[m
+[32m+[m[32m    Returns[m
+[32m+[m[32m    -------[m
+[32m+[m[32m    str[m
+[32m+[m[32m        Normalized message text.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    normalized_lines: list[str] = [][m
+[32m+[m
+[32m+[m[32m    for line in message.splitlines():[m
+[32m+[m[32m        cleaned_line = WHITESPACE_PATTERN.sub([m
+[32m+[m[32m            " ",[m
+[32m+[m[32m            line,[m
+[32m+[m[32m        ).strip()[m
+[32m+[m
+[32m+[m[32m        if cleaned_line:[m
+[32m+[m[32m            normalized_lines.append(cleaned_line)[m
+[32m+[m
+[32m+[m[32m    return "\n".join(normalized_lines)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _is_phone_number([m
+[32m+[m[32m    sender: str,[m
+[32m+[m[32m) -> bool:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Determine whether the sender is represented as a phone number.[m
+[32m+[m
+[32m+[m[32m    Parameters[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    sender[m
+[32m+[m[32m        Normalized sender string.[m
+[32m+[m
+[32m+[m[32m    Returns[m
+[32m+[m[32m    -------[m
+[32m+[m[32m    bool[m
+[32m+[m[32m        True if the sender matches the expected international phone[m
+[32m+[m[32m        number format; otherwise False.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    return PHONE_NUMBER_PATTERN.fullmatch(sender) is not None[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _is_deleted_message([m
+[32m+[m[32m    message: str,[m
+[32m+[m[32m) -> bool:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Determine whether the message is the standard WhatsApp[m
+[32m+[m[32m    deleted-message placeholder.[m
+[32m+[m
+[32m+[m[32m    Parameters[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    message[m
+[32m+[m[32m        Normalized message text.[m
+[32m+[m
+[32m+[m[32m    Returns[m
+[32m+[m[32m    -------[m
+[32m+[m[32m    bool[m
+[32m+[m[32m        True if the message is the WhatsApp deleted-message[m
+[32m+[m[32m        placeholder; otherwise False.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    return DELETED_MESSAGE_PATTERN.fullmatch(message) is not None[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _has_media_placeholder([m
+[32m+[m[32m    message: str,[m
+[32m+[m[32m) -> bool:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Determine whether the message is the standard WhatsApp[m
+[32m+[m[32m    media placeholder.[m
+[32m+[m
+[32m+[m[32m    Parameters[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    message[m
+[32m+[m[32m        Normalized message text.[m
+[32m+[m
+[32m+[m[32m    Returns[m
+[32m+[m[32m    -------[m
+[32m+[m[32m    bool[m
+[32m+[m[32m        True if the message is the WhatsApp media placeholder;[m
+[32m+[m[32m        otherwise False.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    return MEDIA_OMITTED_PATTERN.fullmatch(message) is not None[m
+[1mdiff --git a/src/infrastructure/data_engine/exceptions.py b/src/infrastructure/data_engine/exceptions.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..8b4c549[m
+[1m--- /dev/null[m
+[1m+++ b/src/infrastructure/data_engine/exceptions.py[m
+[36m@@ -0,0 +1,91 @@[m
+[32m+[m[32m# src/infrastructure/data_engine/exceptions.py[m
+[32m+[m
+[32m+[m[32m"""[m
+[32m+[m[32mCustom exceptions for the Infrastructure Data Engine.[m
+[32m+[m
+[32m+[m[32mThis module defines the exception hierarchy used by the data ingestion[m
+[32m+[m[32mpipeline. These exceptions represent infrastructure-level failures only[m
+[32m+[m[32mand must never be used to signal business rule violations.[m
+[32m+[m
+[32m+[m[32mException Hierarchy[m
+[32m+[m[32m-------------------[m
+[32m+[m[32mDataEngineError[m
+[32m+[m[32m├── FileLoadError[m
+[32m+[m[32m├── InvalidExportFormatError[m
+[32m+[m[32m├── MalformedRecordError[m
+[32m+[m[32m└── ParsingError[m
+[32m+[m
+[32m+[m[32mThe Application layer may catch these exceptions to provide user-friendly[m
+[32m+[m[32mfeedback without exposing implementation details.[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mfrom __future__ import annotations[m
+[32m+[m
+[32m+[m[32m__all__ = [[m
+[32m+[m[32m    "DataEngineError",[m
+[32m+[m[32m    "FileLoadError",[m
+[32m+[m[32m    "InvalidExportFormatError",[m
+[32m+[m[32m    "MalformedRecordError",[m
+[32m+[m[32m    "ParsingError",[m
+[32m+[m[32m][m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass DataEngineError(Exception):[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Base exception for all Infrastructure Data Engine errors.[m
+[32m+[m
+[32m+[m[32m    All custom exceptions raised by the data engine should inherit from[m
+[32m+[m[32m    this class, allowing callers to catch a single exception type when[m
+[32m+[m[32m    appropriate.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass FileLoadError(DataEngineError):[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Raised when a chat export cannot be loaded.[m
+[32m+[m
+[32m+[m[32m    Examples[m
+[32m+[m[32m    --------[m
+[32m+[m[32m    - File does not exist.[m
+[32m+[m[32m    - File cannot be opened.[m
+[32m+[m[32m    - Unsupported encoding.[m
+[32m+[m[32m    - Insufficient permissions.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass InvalidExportFormatError(DataEngineError):[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Raised when the input file is not a supported chat export format.[m
+[32m+[m
+[32m+[m[32m    Examples[m
+[32m+[m[32m    --------[m
+[32m+[m[32m    - Incorrect file structure.[m
+[32m+[m[32m    - Missing required columns.[m
+[32m+[m[32m    - Invalid delimiter.[m
+[32m+[m[32m    - Corrupted export.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass MalformedRecordError(DataEngineError):[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Raised when an individual message record is malformed.[m
+[32m+[m
+[32m+[m[32m    Examples[m
+[32m+[m[32m    --------[m
+[32m+[m[32m    - Missing timestamp.[m
+[32m+[m[32m    - Missing sender.[m
+[32m+[m[32m    - Missing message.[m
+[32m+[m[32m    - Invalid field count.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass ParsingError(DataEngineError):[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Raised when a record cannot be parsed successfully.[m
+[32m+[m
+[32m+[m[32m    Examples[m
+[32m+[m[32m    --------[m
+[32m+[m[32m    - Invalid timestamp format.[m
+[32m+[m[32m    - Unexpected parser state.[m
+[32m+[m[32m    - Failed field extraction.[m
+[32m+[m[32m    """[m
+[1mdiff --git a/src/infrastructure/data_engine/loader.py b/src/infrastructure/data_engine/loader.py[m
+[1mindex e69de29..e468115 100644[m
+[1m--- a/src/infrastructure/data_engine/loader.py[m
+[1m+++ b/src/infrastructure/data_engine/loader.py[m
+[36m@@ -0,0 +1,84 @@[m
+[32m+[m[32m# src/infrastructure/data_engine/loader.py[m
+[32m+[m
+[32m+[m[32m"""[m
+[32m+[m[32mLoad WhatsApp chat exports from disk.[m
+[32m+[m
+[32m+[m[32mThis module is responsible only for reading chat export files from the[m
+[32m+[m[32mfilesystem. It performs no parsing, normalization, validation, or[m
+[32m+[m[32mbusiness logic.[m
+[32m+[m
+[32m+[m[32mResponsibilities[m
+[32m+[m[32m----------------[m
+[32m+[m[32m- Validate the input path.[m
+[32m+[m[32m- Validate the file type.[m
+[32m+[m[32m- Read the file using UTF-8 (with BOM support).[m
+[32m+[m[32m- Return the raw text exactly as stored in the file.[m
+[32m+[m
+[32m+[m[32mThe returned text is consumed by ``parser.py``.[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mfrom __future__ import annotations[m
+[32m+[m
+[32m+[m[32mimport logging[m
+[32m+[m[32mfrom pathlib import Path[m
+[32m+[m
+[32m+[m[32mfrom .exceptions import FileLoadError, InvalidExportFormatError[m
+[32m+[m
+[32m+[m[32m__all__ = [[m
+[32m+[m[32m    "load_chat",[m
+[32m+[m[32m][m
+[32m+[m
+[32m+[m[32mlogger = logging.getLogger(__name__)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef load_chat(filepath: str | Path) -> str:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Load a WhatsApp chat export into memory.[m
+[32m+[m
+[32m+[m[32m    Parameters[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    filepath[m
+[32m+[m[32m        Path to the exported chat text file.[m
+[32m+[m
+[32m+[m[32m    Returns[m
+[32m+[m[32m    -------[m
+[32m+[m[32m    str[m
+[32m+[m[32m        Raw file contents.[m
+[32m+[m
+[32m+[m[32m    Raises[m
+[32m+[m[32m    ------[m
+[32m+[m[32m    FileLoadError[m
+[32m+[m[32m        If the file cannot be found or read.[m
+[32m+[m
+[32m+[m[32m    InvalidExportFormatError[m
+[32m+[m[32m        If the supplied file is not a supported text export.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    path = Path(filepath)[m
+[32m+[m
+[32m+[m[32m    logger.info("Loading WhatsApp export: %s", path)[m
+[32m+[m
+[32m+[m[32m    if not path.exists():[m
+[32m+[m[32m        raise FileLoadError(f"Chat export not found: '{path}'.")[m
+[32m+[m
+[32m+[m[32m    if not path.is_file():[m
+[32m+[m[32m        raise FileLoadError(f"Expected a file but received: '{path}'.")[m
+[32m+[m
+[32m+[m[32m    if path.suffix.lower() != ".txt":[m
+[32m+[m[32m        raise InvalidExportFormatError([m
+[32m+[m[32m            f"Unsupported file type '{path.suffix}'. " "Expected a '.txt' export."[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        raw_text = path.read_text(encoding="utf-8-sig")[m
+[32m+[m[32m    except OSError as exc:[m
+[32m+[m[32m        raise FileLoadError(f"Unable to read chat export: '{path}'.") from exc[m
+[32m+[m
+[32m+[m[32m    if not raw_text.strip():[m
+[32m+[m[32m        raise FileLoadError("The chat export is empty.")[m
+[32m+[m
+[32m+[m[32m    logger.info([m
+[32m+[m[32m        "Successfully loaded chat export (%d characters).",[m
+[32m+[m[32m        len(raw_text),[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    return raw_text[m
+[1mdiff --git a/src/infrastructure/data_engine/models.py b/src/infrastructure/data_engine/models.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..1dc06ca[m
+[1m--- /dev/null[m
+[1m+++ b/src/infrastructure/data_engine/models.py[m
+[36m@@ -0,0 +1,118 @@[m
+[32m+[m[32m# src/infrastructure/data_engine/models.py[m
+[32m+[m
+[32m+[m[32m"""[m
+[32m+[m[32mInfrastructure models for the WhatsApp Data Engine.[m
+[32m+[m
+[32m+[m[32mThis module defines immutable data structures used internally by the[m
+[32m+[m[32mInfrastructure layer while transforming a raw WhatsApp export into[m
+[32m+[m[32mvalidated Domain objects.[m
+[32m+[m
+[32m+[m[32mThese models are intentionally independent of the Domain layer.[m
+[32m+[m
+[32m+[m[32mPipeline[m
+[32m+[m[32m--------[m
+[32m+[m[32mRaw WhatsApp Export[m
+[32m+[m[32m        │[m
+[32m+[m[32m        ▼[m
+[32m+[m[32mRawMessageRecord[m
+[32m+[m[32m        │[m
+[32m+[m[32m        ▼[m
+[32m+[m[32mCleanMessageRecord[m
+[32m+[m[32m        │[m
+[32m+[m[32m        ▼[m
+[32m+[m[32mDomain Models (validator.py)[m
+[32m+[m
+[32m+[m[32mThe classes defined here should never contain business rules.[m
+[32m+[m[32mThey exist solely to transport data safely through the parsing pipeline.[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mfrom __future__ import annotations[m
+[32m+[m
+[32m+[m[32mfrom dataclasses import dataclass[m
+[32m+[m[32mfrom datetime import datetime[m
+[32m+[m
+[32m+[m[32m__all__ = [[m
+[32m+[m[32m    "RawMessageRecord",[m
+[32m+[m[32m    "CleanMessageRecord",[m
+[32m+[m[32m][m
+[32m+[m
+[32m+[m
+[32m+[m[32m@dataclass(frozen=True, slots=True)[m
+[32m+[m[32mclass RawMessageRecord:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Represents a single message immediately after parsing.[m
+[32m+[m
+[32m+[m[32m    This object is created by ``parser.py`` after reading the raw[m
+[32m+[m[32m    WhatsApp export. It contains only the information extracted from[m
+[32m+[m[32m    the source file and performs no normalization.[m
+[32m+[m
+[32m+[m[32m    Attributes[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    timestamp:[m
+[32m+[m[32m        Date and time extracted from the chat export.[m
+[32m+[m
+[32m+[m[32m    sender:[m
+[32m+[m[32m        Sender exactly as found in the export.[m
+[32m+[m
+[32m+[m[32m    message:[m
+[32m+[m[32m        Message exactly as found in the export.[m
+[32m+[m
+[32m+[m[32m    source_line:[m
+[32m+[m[32m        Original starting line number within the source file.[m
+[32m+[m[32m        Used for diagnostics and error reporting.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m[32m    timestamp: datetime[m
+[32m+[m[32m    sender: str[m
+[32m+[m[32m    message: str[m
+[32m+[m[32m    source_line: int[m
+[32m+[m
+[32m+[m
+[32m+[m[32m@dataclass(frozen=True, slots=True)[m
+[32m+[m[32mclass CleanMessageRecord:[m
+[32m+[m[32m    """[m
+[32m+[m[32m    Represents a normalized infrastructure record.[m
+[32m+[m
+[32m+[m[32m    This object is produced by ``cleaner.py`` after performing[m
+[32m+[m[32m    infrastructure-level normalization. It contains cleaned text and[m
+[32m+[m[32m    metadata derived from the raw export but deliberately excludes any[m
+[32m+[m[32m    business interpretation.[m
+[32m+[m
+[32m+[m[32m    Business concepts such as attendance, activities, sessions, or[m
+[32m+[m[32m    analytics are handled later by the Domain layer.[m
+[32m+[m
+[32m+[m[32m    Attributes[m
+[32m+[m[32m    ----------[m
+[32m+[m[32m    timestamp:[m
+[32m+[m[32m        Normalized timestamp.[m
+[32m+[m
+[32m+[m[32m    sender:[m
+[32m+[m[32m        Normalized sender name or phone number.[m
+[32m+[m
+[32m+[m[32m    message:[m
+[32m+[m[32m        Normalized message text.[m
+[32m+[m
+[32m+[m[32m    source_line:[m
+[32m+[m[32m        Original line number in the source file.[m
+[32m+[m
+[32m+[m[32m    sender_is_phone_number:[m
+[32m+[m[32m        Indicates whether

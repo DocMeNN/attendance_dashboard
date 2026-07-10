@@ -1,5 +1,3 @@
-# src/domain/models/session.py
-
 """
 Session Domain Model
 
@@ -8,6 +6,7 @@ Purpose:
 
 Responsibilities:
     - Aggregate attendance events.
+    - Aggregate Done acknowledgement events.
     - Aggregate activity events.
     - Provide session-level business behaviour.
     - Remain technology independent.
@@ -31,20 +30,40 @@ from datetime import date, datetime, timedelta
 
 from .activity_event import ActivityEvent
 from .attendance_event import AttendanceEvent
+from .done_event import DoneEvent
 
 
 @dataclass(frozen=True, slots=True)
 class Session:
     """
     Immutable meeting session.
+
+    A Session is the Aggregate Root of the Domain.
+
+    It represents every significant event that belongs to a
+    single meeting session.
+
+    The Session owns:
+
+    - Attendance events
+    - Done acknowledgement events
+    - Activity events
+
+    Business analytics operate on a completed Session.
     """
 
     session_date: date
+
     attendance_events: tuple[AttendanceEvent, ...] = field(default_factory=tuple)
+
+    done_events: tuple[DoneEvent, ...] = field(default_factory=tuple)
+
     activity_events: tuple[ActivityEvent, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        """Validate session."""
+        """
+        Validate and normalize the session.
+        """
 
         if not isinstance(self.session_date, date):
             raise TypeError("session_date must be a date.")
@@ -56,6 +75,13 @@ class Session:
             )
         )
 
+        done = tuple(
+            sorted(
+                self.done_events,
+                key=lambda event: event.timestamp,
+            )
+        )
+
         activity = tuple(
             sorted(
                 self.activity_events,
@@ -63,27 +89,55 @@ class Session:
             )
         )
 
-        object.__setattr__(self, "attendance_events", attendance)
-        object.__setattr__(self, "activity_events", activity)
+        object.__setattr__(
+            self,
+            "attendance_events",
+            attendance,
+        )
+
+        object.__setattr__(
+            self,
+            "done_events",
+            done,
+        )
+
+        object.__setattr__(
+            self,
+            "activity_events",
+            activity,
+        )
 
     # ------------------------------------------------------------------
-    # Counts
+    # Event Counts
     # ------------------------------------------------------------------
 
     @property
     def attendance_count(self) -> int:
-        """Return attendance event count."""
+        """
+        Return attendance event count.
+        """
         return len(self.attendance_events)
 
     @property
+    def done_count(self) -> int:
+        """
+        Return Done acknowledgement count.
+        """
+        return len(self.done_events)
+
+    @property
     def activity_count(self) -> int:
-        """Return activity event count."""
+        """
+        Return activity event count.
+        """
         return len(self.activity_events)
 
     @property
     def total_events(self) -> int:
-        """Return total events."""
-        return self.attendance_count + self.activity_count
+        """
+        Return total event count.
+        """
+        return self.attendance_count + self.done_count + self.activity_count
 
     # ------------------------------------------------------------------
     # Attendance
@@ -91,45 +145,98 @@ class Session:
 
     @property
     def attendees(self) -> tuple[str, ...]:
-        """Return attendees in chronological order."""
+        """
+        Return attendees in chronological order.
+        """
         return tuple(event.attendee for event in self.attendance_events)
 
     @property
     def unique_attendees(self) -> tuple[str, ...]:
-        """Return unique attendees preserving order."""
+        """
+        Return unique attendees preserving order.
+        """
 
         seen: set[str] = set()
-        members: list[str] = []
+        attendees: list[str] = []
 
         for event in self.attendance_events:
             key = event.attendee.casefold()
 
             if key not in seen:
                 seen.add(key)
-                members.append(event.attendee)
+                attendees.append(event.attendee)
 
-        return tuple(members)
+        return tuple(attendees)
 
     @property
     def attendee_count(self) -> int:
-        """Return unique attendee count."""
+        """
+        Return unique attendee count.
+        """
         return len(self.unique_attendees)
 
     @property
     def first_attendance(self) -> AttendanceEvent | None:
-        """Return first attendance event."""
-        return self.attendance_events[0] if self.attendance_events else None
+        """
+        Return first attendance event.
+        """
+        if not self.attendance_events:
+            return None
+
+        return self.attendance_events[0]
 
     @property
     def last_attendance(self) -> AttendanceEvent | None:
-        """Return last attendance event."""
-        return self.attendance_events[-1] if self.attendance_events else None
+        """
+        Return last attendance event.
+        """
+        if not self.attendance_events:
+            return None
+
+        return self.attendance_events[-1]
 
     @property
     def first_attendee(self) -> str | None:
-        """Return first attendee."""
+        """
+        Return first attendee.
+        """
         event = self.first_attendance
-        return event.attendee if event else None
+
+        if event is None:
+            return None
+
+        return event.attendee
+
+    # ------------------------------------------------------------------
+    # Done Acknowledgements
+    # ------------------------------------------------------------------
+
+    @property
+    def first_done(self) -> DoneEvent | None:
+        """
+        Return first Done acknowledgement.
+        """
+        if not self.done_events:
+            return None
+
+        return self.done_events[0]
+
+    @property
+    def last_done(self) -> DoneEvent | None:
+        """
+        Return last Done acknowledgement.
+        """
+        if not self.done_events:
+            return None
+
+        return self.done_events[-1]
+
+    @property
+    def has_done(self) -> bool:
+        """
+        Return True if Done acknowledgements exist.
+        """
+        return bool(self.done_events)
 
     # ------------------------------------------------------------------
     # Activities
@@ -137,86 +244,163 @@ class Session:
 
     @property
     def first_activity(self) -> ActivityEvent | None:
-        """Return first activity."""
-        return self.activity_events[0] if self.activity_events else None
+        """
+        Return first activity event.
+        """
+        if not self.activity_events:
+            return None
+
+        return self.activity_events[0]
 
     @property
     def last_activity(self) -> ActivityEvent | None:
-        """Return last activity."""
-        return self.activity_events[-1] if self.activity_events else None
+        """
+        Return last activity event.
+        """
+        if not self.activity_events:
+            return None
+
+        return self.activity_events[-1]
 
     # ------------------------------------------------------------------
     # Timeline
     # ------------------------------------------------------------------
 
     @property
+    def all_events(
+        self,
+    ) -> tuple[AttendanceEvent | DoneEvent | ActivityEvent, ...]:
+        """
+        Return all events in chronological order.
+        """
+
+        events = (
+            list(self.attendance_events)
+            + list(self.done_events)
+            + list(self.activity_events)
+        )
+
+        return tuple(
+            sorted(
+                events,
+                key=lambda event: event.timestamp,
+            )
+        )
+
+    @property
     def start_time(self) -> datetime | None:
-        """Return first recorded event."""
+        """
+        Return first recorded event timestamp.
+        """
 
-        events = [*self.attendance_events] + [*self.activity_events]
-
-        if not events:
+        if not self.all_events:
             return None
 
-        return min(event.timestamp for event in events)
+        return self.all_events[0].timestamp
 
     @property
     def end_time(self) -> datetime | None:
-        """Return last recorded event."""
+        """
+        Return last recorded event timestamp.
+        """
 
-        events = [*self.attendance_events] + [*self.activity_events]
-
-        if not events:
+        if not self.all_events:
             return None
 
-        return max(event.timestamp for event in events)
+        return self.all_events[-1].timestamp
 
     @property
     def duration(self) -> timedelta:
-        """Return session duration."""
+        """
+        Return session duration.
+        """
 
         if self.start_time is None or self.end_time is None:
             return timedelta(0)
 
         return self.end_time - self.start_time
 
+    # ------------------------------------------------------------------
+    # Status
+    # ------------------------------------------------------------------
+
     @property
     def has_attendance(self) -> bool:
-        """Return True if attendance exists."""
+        """
+        Return True if attendance events exist.
+        """
         return bool(self.attendance_events)
 
     @property
+    def has_done_events(self) -> bool:
+        """
+        Return True if Done acknowledgement events exist.
+        """
+        return bool(self.done_events)
+
+    @property
     def has_activities(self) -> bool:
-        """Return True if activities exist."""
+        """
+        Return True if activity events exist.
+        """
         return bool(self.activity_events)
 
     @property
     def is_empty(self) -> bool:
-        """Return True if session has no events."""
+        """
+        Return True if the session contains no events.
+        """
         return self.total_events == 0
 
     # ------------------------------------------------------------------
     # Lookup
     # ------------------------------------------------------------------
 
-    def attendee_exists(self, attendee: str) -> bool:
-        """Return True if attendee exists."""
-        return attendee.casefold() in {
-            member.casefold() for member in self.unique_attendees
-        }
+    def attendee_exists(
+        self,
+        attendee: str,
+    ) -> bool:
+        """
+        Return True if an attendee exists in the session.
+        """
+
+        normalized = attendee.casefold()
+
+        return normalized in {member.casefold() for member in self.unique_attendees}
+
+    def done_exists(
+        self,
+        attendee: str,
+    ) -> bool:
+        """
+        Return True if the attendee has at least one
+        Done acknowledgement.
+        """
+
+        normalized = attendee.casefold()
+
+        return any(
+            event.attendee.casefold() == normalized for event in self.done_events
+        )
 
     # ------------------------------------------------------------------
     # Serialization
     # ------------------------------------------------------------------
 
     def to_dict(self) -> dict[str, object]:
-        """Return dictionary representation."""
+        """
+        Return dictionary representation.
+        """
 
         return {
             "session_date": self.session_date,
             "attendance_count": self.attendance_count,
+            "done_count": self.done_count,
             "activity_count": self.activity_count,
             "attendee_count": self.attendee_count,
+            "total_events": self.total_events,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
             "duration": str(self.duration),
         }
 
@@ -225,18 +409,26 @@ class Session:
     # ------------------------------------------------------------------
 
     def __len__(self) -> int:
-        """Return total number of events."""
+        """
+        Return total number of events.
+        """
         return self.total_events
 
     def __bool__(self) -> bool:
-        """Return True if session contains events."""
+        """
+        Return True if the session contains events.
+        """
         return not self.is_empty
 
     def __str__(self) -> str:
-        """Return readable representation."""
+        """
+        Return readable representation.
+        """
+
         return (
             f"Session("
             f"date={self.session_date}, "
             f"attendees={self.attendee_count}, "
+            f"done={self.done_count}, "
             f"activities={self.activity_count})"
         )
