@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 
-from domain.models.message import Message
+from src.domain.models.message import Message
 
 from .exceptions import MalformedRecordError
 from .models import CleanMessageRecord
