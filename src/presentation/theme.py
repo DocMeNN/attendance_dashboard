@@ -1,5 +1,3 @@
-# src/presentation/theme.py
-
 """
 Presentation Theme Configuration
 
@@ -60,6 +58,8 @@ SIDEBAR_STATE: Final[Literal["auto", "expanded", "collapsed"]] = "expanded"
 # Page Names
 # ============================================================================
 
+HOME_PAGE: Final[str] = "Home"
+
 DASHBOARD_PAGE: Final[str] = "Dashboard"
 
 ATTENDANCE_PAGE: Final[str] = "Attendance"
@@ -75,6 +75,7 @@ SETTINGS_PAGE: Final[str] = "Settings"
 # ============================================================================
 
 NAVIGATION_PAGES: Final[tuple[str, ...]] = (
+    HOME_PAGE,
     DASHBOARD_PAGE,
     ATTENDANCE_PAGE,
     ACTIVITY_PAGE,
@@ -90,9 +91,6 @@ NAVIGATION_PAGES: Final[tuple[str, ...]] = (
 def configure_page() -> None:
     """
     Configure the Streamlit application.
-
-    This function should be called exactly once during
-    application startup.
     """
 
     st.set_page_config(
@@ -127,6 +125,7 @@ __all__ = [
     "APP_TAGLINE",
     "PAGE_LAYOUT",
     "SIDEBAR_STATE",
+    "HOME_PAGE",
     "DASHBOARD_PAGE",
     "ATTENDANCE_PAGE",
     "ACTIVITY_PAGE",

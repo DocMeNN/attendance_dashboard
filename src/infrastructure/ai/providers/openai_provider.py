@@ -21,15 +21,24 @@ Author: Me
 
 from __future__ import annotations
 
-# Third-party imports
+# ============================================================================
+# Third-Party Imports
+# ============================================================================
 from openai import (
     APIConnectionError,
     APIStatusError,
     AuthenticationError,
     RateLimitError,
 )
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 
-# Local application imports
+# ============================================================================
+# Local Application Imports
+# ============================================================================
 from src.config.ai_config import AIConfig
 from src.domain.ai.exceptions import (
     AIAuthenticationError,
@@ -63,21 +72,21 @@ class OpenAIProvider(BaseAIProvider):
         Generate text using OpenAI.
         """
 
-        messages: list[dict[str, str]] = []
+        messages: list[ChatCompletionMessageParam] = []
 
         if request.system_prompt:
             messages.append(
-                {
-                    "role": "system",
-                    "content": request.system_prompt,
-                }
+                ChatCompletionSystemMessageParam(
+                    role="system",
+                    content=request.system_prompt,
+                )
             )
 
         messages.append(
-            {
-                "role": "user",
-                "content": request.prompt,
-            }
+            ChatCompletionUserMessageParam(
+                role="user",
+                content=request.prompt,
+            )
         )
 
         try:
@@ -100,7 +109,9 @@ class OpenAIProvider(BaseAIProvider):
         except APIStatusError as exc:
             raise AIProviderError(f"OpenAI returned HTTP {exc.status_code}.") from exc
 
-        message = self.require_text(response.choices[0].message.content)
+        message = self.require_text(
+            response.choices[0].message.content,
+        )
 
         usage = response.usage
 
@@ -108,9 +119,15 @@ class OpenAIProvider(BaseAIProvider):
             content=message,
             provider="openai",
             model=response.model,
-            prompt_tokens=self.safe_int(usage.prompt_tokens if usage else 0),
-            completion_tokens=self.safe_int(usage.completion_tokens if usage else 0),
-            total_tokens=self.safe_int(usage.total_tokens if usage else 0),
+            prompt_tokens=self.safe_int(
+                usage.prompt_tokens if usage else 0,
+            ),
+            completion_tokens=self.safe_int(
+                usage.completion_tokens if usage else 0,
+            ),
+            total_tokens=self.safe_int(
+                usage.total_tokens if usage else 0,
+            ),
             metadata={
                 "finish_reason": response.choices[0].finish_reason,
             },

@@ -14,8 +14,14 @@ Author: Me
 
 from __future__ import annotations
 
+# ============================================================================
+# Standard Library Imports
+# ============================================================================
 from typing import Any
 
+# ============================================================================
+# Third-Party Imports
+# ============================================================================
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -23,7 +29,11 @@ from openai import (
     OpenAI,
     RateLimitError,
 )
+from openai.types.chat import ChatCompletionMessageParam
 
+# ============================================================================
+# Local Imports
+# ============================================================================
 from src.config.ai_config import AIConfig
 from src.domain.ai.exceptions import (
     AIAuthenticationError,
@@ -32,13 +42,24 @@ from src.domain.ai.exceptions import (
     AIRateLimitError,
 )
 
+# ============================================================================
+# OpenAI Client
+# ============================================================================
+
 
 class OpenAIClient:
     """
     Thin wrapper around the OpenAI SDK.
     """
 
-    def __init__(self, config: AIConfig) -> None:
+    def __init__(
+        self,
+        config: AIConfig,
+    ) -> None:
+        """
+        Initialize the OpenAI SDK client.
+        """
+
         self._client = OpenAI(
             api_key=config.api_key,
             base_url=config.base_url,
@@ -48,16 +69,31 @@ class OpenAIClient:
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[ChatCompletionMessageParam],
         temperature: float,
         max_tokens: int,
     ) -> Any:
         """
-        Execute a completion request.
+        Execute a chat completion request.
+
+        Parameters
+        ----------
+        model:
+            OpenAI model name.
+
+        messages:
+            Conversation messages.
+
+        temperature:
+            Sampling temperature.
+
+        max_tokens:
+            Maximum number of output tokens.
 
         Returns
         -------
-        Raw OpenAI SDK response.
+        Any
+            Raw OpenAI SDK response.
         """
 
         try:

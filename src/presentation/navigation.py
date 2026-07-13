@@ -41,6 +41,7 @@ from src.presentation.pages import (
     activity_page,
     attendance_page,
     dashboard_page,
+    home_page,
     reports_page,
     settings_page,
 )
@@ -56,6 +57,7 @@ PageRenderer = Callable[[], None]
 # ============================================================================
 
 PAGE_REGISTRY: dict[str, PageRenderer] = {
+    theme.HOME_PAGE: home_page.render,
     theme.DASHBOARD_PAGE: dashboard_page.render,
     theme.ATTENDANCE_PAGE: attendance_page.render,
     theme.ACTIVITY_PAGE: activity_page.render,

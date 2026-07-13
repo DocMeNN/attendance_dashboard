@@ -10,7 +10,8 @@ Coordinates the complete WhatsApp chat import workflow.
 Responsibilities
 ----------------
 - Load a WhatsApp chat export.
-- Parse raw chat text.
+- Detect the export format.
+- Delegate parsing to the appropriate parser.
 - Clean parsed records.
 - Validate cleaned records.
 - Build a Session aggregate.
@@ -48,8 +49,16 @@ from src.application.services.dashboard_service import DashboardService
 from src.domain.models.session import Session
 from src.infrastructure.data_engine.cleaner import clean_records
 from src.infrastructure.data_engine.loader import load_chat
+from src.infrastructure.data_engine.models import RawMessageRecord
 from src.infrastructure.data_engine.parser import parse_chat
 from src.infrastructure.data_engine.validator import validate_records
+from src.infrastructure.data_engine.whatsapp_parser import (
+    parse_whatsapp_chat,
+)
+
+# ============================================================================
+# Import Service
+# ============================================================================
 
 
 class ImportService:
@@ -83,7 +92,7 @@ class ImportService:
         Parameters
         ----------
         filepath
-            Path to the exported WhatsApp .txt file.
+            Path to the exported chat file.
 
         Returns
         -------
@@ -91,13 +100,21 @@ class ImportService:
             Fully constructed Session aggregate.
         """
 
-        raw_text = load_chat(filepath)
+        raw_text = load_chat(
+            filepath,
+        )
 
-        parsed_records = parse_chat(raw_text)
+        parsed_records = self._parse_records(
+            raw_text,
+        )
 
-        cleaned_records = clean_records(parsed_records)
+        cleaned_records = clean_records(
+            parsed_records,
+        )
 
-        messages = validate_records(cleaned_records)
+        messages = validate_records(
+            cleaned_records,
+        )
 
         if not messages:
             raise ValueError("No valid messages were found in the chat export.")
@@ -110,11 +127,62 @@ class ImportService:
         )
 
     # ------------------------------------------------------------------
+    # Parser Selection
+    # ------------------------------------------------------------------
+
+    def _parse_records(
+        self,
+        raw_text: str,
+    ) -> list[RawMessageRecord]:
+        """
+        Parse the chat using the appropriate parser.
+
+        Native WhatsApp exports are parsed by
+        ``whatsapp_parser.py``.
+
+        Canonical tab-separated exports are parsed by
+        ``parser.py``.
+        """
+
+        if self._is_whatsapp_export(
+            raw_text,
+        ):
+            return parse_whatsapp_chat(
+                raw_text,
+            )
+
+        return parse_chat(
+            raw_text,
+        )
+
+    def _is_whatsapp_export(
+        self,
+        raw_text: str,
+    ) -> bool:
+        """
+        Return True when the text appears to be a
+        native WhatsApp export.
+        """
+
+        for line in raw_text.splitlines():
+
+            line = line.strip()
+
+            if not line:
+                continue
+
+            return " - " in line and ":" in line and "\t" not in line
+
+        return False
+
+    # ------------------------------------------------------------------
     # Service Accessor
     # ------------------------------------------------------------------
 
     @property
-    def dashboard_service(self) -> DashboardService:
+    def dashboard_service(
+        self,
+    ) -> DashboardService:
         """
         Return the DashboardService used by this service.
         """
@@ -125,7 +193,9 @@ class ImportService:
     # Dunder Methods
     # ------------------------------------------------------------------
 
-    def __repr__(self) -> str:
+    def __repr__(
+        self,
+    ) -> str:
         """
         Return the official representation.
         """
@@ -136,7 +206,9 @@ class ImportService:
             f"{self.dashboard_service.__class__.__name__})"
         )
 
-    def __str__(self) -> str:
+    def __str__(
+        self,
+    ) -> str:
         """
         Return a human-readable representation.
         """

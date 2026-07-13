@@ -118,44 +118,66 @@ def render() -> None:
     # AI Ministry Intelligence
     # =====================================================================
 
-    metric_cards.render_section_header(
-        "AI Ministry Intelligence",
-        ("Generate an AI-powered summary of the current " "meeting session."),
-    )
+    try:
 
-    viewmodel = AIViewModel(
-        controller=context.ai_controller(),
-    )
+        st.info("DEBUG 1: Entered AI section")
 
-    session_information = viewmodel.build_session_information(
-        session=session,
-    )
+        metric_cards.render_section_header(
+            "AI Ministry Intelligence",
+            ("Generate an AI-powered summary " "of the current meeting session."),
+        )
 
-    attendance_summary = viewmodel.build_attendance_summary(
-        attendance=attendance,
-    )
+        st.success("DEBUG 2: Section header rendered")
 
-    activity_summary = viewmodel.build_activity_summary(
-        activity=activity,
-    )
+        viewmodel = AIViewModel(
+            controller=context.ai_controller(),
+        )
 
-    ai_panel.render(
-        title="Session Summary",
-        button_label="✨ Generate Session Summary",
-        callback=context.ai_controller().generate_session_summary,
-        callback_kwargs={
-            "session_information": session_information,
-            "attendance_summary": attendance_summary,
-            "activity_summary": activity_summary,
-        },
-        result_key="dashboard_session_summary",
-        button_key="dashboard_generate_summary",
-        help_text="Generate an AI summary of this ministry session.",
-        empty_message=(
-            "Click 'Generate Session Summary' to create "
-            "an AI-powered overview of this meeting."
-        ),
-    )
+        st.success("DEBUG 3: AIViewModel created")
+
+        session_information = viewmodel.build_session_information(
+            session=session,
+        )
+
+        st.success("DEBUG 4: Session information built")
+
+        attendance_summary = viewmodel.build_attendance_summary(
+            attendance=attendance,
+        )
+
+        st.success("DEBUG 5: Attendance summary built")
+
+        activity_summary = viewmodel.build_activity_summary(
+            activity=activity,
+        )
+
+        st.success("DEBUG 6: Activity summary built")
+
+        ai_panel.render(
+            title="Session Summary",
+            button_label="✨ Generate Session Summary",
+            callback=context.ai_controller().generate_session_summary,
+            callback_kwargs={
+                "session_information": session_information,
+                "attendance_summary": attendance_summary,
+                "activity_summary": activity_summary,
+            },
+            result_key="dashboard_session_summary",
+            button_key="dashboard_generate_summary",
+            help_text="Generate an AI summary of this ministry session.",
+            empty_message=(
+                "Click 'Generate Session Summary' to create "
+                "an AI-powered overview of this meeting."
+            ),
+        )
+
+        st.success("DEBUG 7: AI Panel rendered successfully")
+
+    except Exception as exc:
+
+        st.error("DEBUG FAILURE: AI section crashed")
+
+        st.exception(exc)
 
     st.divider()
 
