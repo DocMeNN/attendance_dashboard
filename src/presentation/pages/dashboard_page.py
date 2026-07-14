@@ -120,38 +120,26 @@ def render() -> None:
 
     try:
 
-        st.info("DEBUG 1: Entered AI section")
-
         metric_cards.render_section_header(
             "AI Ministry Intelligence",
-            ("Generate an AI-powered summary " "of the current meeting session."),
+            "Generate an AI-powered summary of the current meeting session.",
         )
-
-        st.success("DEBUG 2: Section header rendered")
 
         viewmodel = AIViewModel(
             controller=context.ai_controller(),
         )
 
-        st.success("DEBUG 3: AIViewModel created")
-
         session_information = viewmodel.build_session_information(
             session=session,
         )
-
-        st.success("DEBUG 4: Session information built")
 
         attendance_summary = viewmodel.build_attendance_summary(
             attendance=attendance,
         )
 
-        st.success("DEBUG 5: Attendance summary built")
-
         activity_summary = viewmodel.build_activity_summary(
             activity=activity,
         )
-
-        st.success("DEBUG 6: Activity summary built")
 
         ai_panel.render(
             title="Session Summary",
@@ -171,15 +159,11 @@ def render() -> None:
             ),
         )
 
-        st.success("DEBUG 7: AI Panel rendered successfully")
-
     except Exception as exc:
 
-        st.error("DEBUG FAILURE: AI section crashed")
+        st.error("Unable to load the AI Ministry Intelligence panel.")
 
         st.exception(exc)
-
-    st.divider()
 
     # =====================================================================
     # Attendance Analytics

@@ -66,8 +66,8 @@ def load_ai_config() -> AIConfig:
 
     default_models = {
         AIProvider.OPENAI: "gpt-5.5",
-        AIProvider.GEMINI: "gemini-2.5-pro",
-        AIProvider.OLLAMA: "llama3.1",
+        AIProvider.GEMINI: "gemini-flash-latest",
+        AIProvider.OLLAMA: "llama3.2:3b",
     }
 
     model = os.getenv(

@@ -57,10 +57,12 @@ from __future__ import annotations
 # ============================================================================
 import traceback
 
+import streamlit as st
+
 # ============================================================================
 # Third-Party Imports
 # ============================================================================
-import streamlit as st
+from dotenv import load_dotenv
 
 # ============================================================================
 # Local Imports
@@ -84,6 +86,8 @@ def main() -> None:
     4. Determine selected page.
     5. Delegate rendering.
     """
+
+    load_dotenv()
 
     theme.configure_page()
 

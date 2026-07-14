@@ -60,7 +60,7 @@ Metric = tuple[
 ]
 
 # ============================================================================
-# Metric Formatters
+# Metric Builders
 # ============================================================================
 
 
@@ -72,8 +72,7 @@ def metric(
     help_text: str | None = None,
 ) -> Metric:
     """
-    Create a metric definition compatible with
-    presentation.metric_cards.render_metric_row().
+    Create a reusable metric definition.
     """
 
     return (
@@ -119,7 +118,7 @@ def counter_to_dataframe(
 
     return pd.DataFrame(
         {
-            category_column: [str(key) for key in counter.keys()],
+            category_column: [str(item) for item in counter.keys()],
             value_column: list(counter.values()),
         }
     )
@@ -132,7 +131,7 @@ def mapping_to_dataframe(
     value_column: str = "Value",
 ) -> pd.DataFrame:
     """
-    Convert a mapping into a two-column DataFrame.
+    Convert a mapping into a DataFrame.
     """
 
     if not mapping:
@@ -155,7 +154,7 @@ def records_to_dataframe(
     records: list[Mapping[str, Any]],
 ) -> pd.DataFrame:
     """
-    Convert record dictionaries into a DataFrame.
+    Convert records into a DataFrame.
     """
 
     if not records:
@@ -175,7 +174,7 @@ def percentage(
     decimals: int = 1,
 ) -> str:
     """
-    Format a percentage value.
+    Format a percentage.
     """
 
     return f"{value:.{decimals}f}%"
@@ -185,7 +184,7 @@ def duration(
     value: timedelta,
 ) -> str:
     """
-    Format a timedelta for display.
+    Format a duration.
     """
 
     return str(value)
@@ -279,6 +278,118 @@ def dashboard_metrics(
             value=summary["activity_count"],
             help_text="Activity events",
         ),
+    )
+
+
+# ============================================================================
+# Attendance Formatters
+# ============================================================================
+
+
+def attendance_metrics(
+    attendance: Mapping[str, Any],
+) -> list[Metric]:
+    """
+    Build attendance metric cards.
+    """
+
+    return metrics(
+        metric(
+            label="Present",
+            value=attendance.get("present_count", 0),
+            help_text="Members marked present.",
+        ),
+        metric(
+            label="Late",
+            value=attendance.get("late_count", 0),
+            help_text="Members marked late.",
+        ),
+        metric(
+            label="Absent",
+            value=attendance.get("absent_count", 0),
+            help_text="Members marked absent.",
+        ),
+        metric(
+            label="Excused",
+            value=attendance.get("excused_count", 0),
+            help_text="Members with approved absence.",
+        ),
+    )
+
+
+def attendance_breakdown(
+    attendance: Mapping[str, Any],
+) -> pd.DataFrame:
+    """
+    Build the attendance distribution DataFrame.
+    """
+
+    return counter_to_dataframe(
+        attendance.get(
+            "attendance_types",
+            Counter(),
+        )
+    )
+
+
+# ============================================================================
+# Attendance Record Builders
+# ============================================================================
+
+
+def attendance_records(
+    attendance: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    Build attendance records for presentation.
+    """
+
+    records = attendance.get("records")
+
+    if not records:
+        return []
+
+    output: list[dict[str, Any]] = []
+
+    for record in records:
+        output.append(
+            {
+                "Attendee": getattr(record, "attendee", "-"),
+                "Status": str(getattr(record, "attendance_type", "-")),
+                "Time": datetime_value(
+                    getattr(record, "timestamp", None),
+                ),
+            }
+        )
+
+    return output
+
+
+def attendance_leaderboard(
+    attendance: Mapping[str, Any],
+) -> pd.DataFrame:
+    """
+    Build an attendance leaderboard DataFrame.
+    """
+
+    leaderboard = attendance.get("leaderboard")
+
+    if not leaderboard:
+        return empty_dataframe(
+            [
+                "Attendee",
+                "Attendance",
+            ]
+        )
+
+    if isinstance(
+        leaderboard,
+        pd.DataFrame,
+    ):
+        return leaderboard
+
+    return records_to_dataframe(
+        leaderboard,
     )
 
 
@@ -397,6 +508,10 @@ __all__ = [
     "datetime_value",
     "session_summary",
     "dashboard_metrics",
+    "attendance_metrics",
+    "attendance_breakdown",
+    "attendance_records",
+    "attendance_leaderboard",
     "highlight_records",
     "empty_dataframe",
     "safe_text",

@@ -5,14 +5,14 @@ Reports Page
 
 Purpose
 -------
-Displays reporting functionality.
+Displays reporting and AI executive reporting for the active session.
 
 Responsibilities
 ----------------
-- Display report information.
-- Display export options.
-- Display AI report generation.
-- Delegate AI generation to presentation components.
+- Display report metrics.
+- Display session summary.
+- Display AI executive report generation.
+- Display export roadmap.
 
 Architectural Rules
 -------------------
@@ -33,8 +33,12 @@ import streamlit as st
 # Local Imports
 # ============================================================================
 from src.presentation import context
-from src.presentation.components import metric_cards
+from src.presentation.components import (
+    metric_cards,
+    tables,
+)
 from src.presentation.components.ai import ai_panel
+from src.presentation.utils import formatters
 from src.presentation.viewmodels.ai_viewmodel import AIViewModel
 
 # ============================================================================
@@ -69,7 +73,7 @@ def render() -> None:
 
     expected = context.expected_attendees()
 
-    dashboard_summary = dashboard.dashboard_summary(
+    summary = dashboard.dashboard_summary(
         session,
         expected,
     )
@@ -83,20 +87,76 @@ def render() -> None:
         session,
     )
 
+    # =====================================================================
+    # Report Overview
+    # =====================================================================
+
+    metric_cards.render_section_header(
+        "Report Overview",
+        "Summary statistics included in this report.",
+    )
+
+    metric_cards.render_metric_row(
+        formatters.dashboard_metrics(
+            summary,
+        ),
+    )
+
+    st.divider()
+
+    # =====================================================================
+    # Session Summary
+    # =====================================================================
+
+    metric_cards.render_section_header(
+        "Session Summary",
+        "General information for the current meeting.",
+    )
+
+    tables.render_dataframe(
+        formatters.session_summary(
+            session,
+        )
+    )
+
+    st.divider()
+
+    # =====================================================================
+    # Session Highlights
+    # =====================================================================
+
+    metric_cards.render_section_header(
+        "Session Highlights",
+        "Important milestones from this meeting.",
+    )
+
+    tables.render_table(
+        formatters.highlight_records(
+            session=session,
+            summary=summary,
+        )
+    )
+
+    st.divider()
+
+    # =====================================================================
+    # AI Executive Summary
+    # =====================================================================
+
     viewmodel = AIViewModel(
         controller=context.ai_controller(),
     )
 
     report = viewmodel.build_executive_report(
         session=session,
-        dashboard_summary=dashboard_summary,
+        dashboard_summary=summary,
         attendance=attendance,
         activity=activity,
     )
 
     metric_cards.render_section_header(
-        "Executive Report",
-        ("Generate an AI executive summary for " "ministry leadership."),
+        "AI Executive Report",
+        "Generate an executive summary for ministry leadership.",
     )
 
     ai_panel.render(
@@ -109,20 +169,52 @@ def render() -> None:
         result_key="executive_summary",
         button_key="generate_executive_summary",
         help_text="Generate an executive report from the current session.",
-        empty_message="Generate an executive summary to begin.",
+        empty_message=(
+            "Click 'Generate Executive Summary' "
+            "to create an AI-powered leadership report."
+        ),
     )
 
     st.divider()
 
+    # =====================================================================
+    # Export
+    # =====================================================================
+
     metric_cards.render_section_header(
         "Export",
-        "Report export options coming in CP-009.",
+        "Export functionality planned for the next checkpoint.",
     )
 
     st.info(
-        "Upcoming export formats:\n\n"
-        "• PDF Report\n"
+        "Planned export formats:\n\n"
+        "• PDF Ministry Report\n"
         "• Excel Workbook\n"
         "• CSV Export\n"
-        "• AI Executive Report"
+        "• AI Executive Summary\n"
+        "• Printable Ministry Report"
     )
+
+    st.divider()
+
+    # =====================================================================
+    # Footer
+    # =====================================================================
+
+    left_column, right_column = st.columns([3, 1])
+
+    with left_column:
+        st.caption(
+            (
+                f"Session Date: {session.session_date} | "
+                f"Attendance: {summary['attendance_count']} | "
+                f"Activities: {summary['activity_count']}"
+            )
+        )
+
+    with right_column:
+        if st.button(
+            "🔄 Refresh",
+            use_container_width=True,
+        ):
+            st.rerun()

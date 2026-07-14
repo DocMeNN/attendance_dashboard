@@ -123,7 +123,7 @@ def render(
             ai_error.render(
                 message="Unable to complete the AI request.",
                 exception=exc,
-                show_details=False,
+                show_details=True,
             )
 
     result = st.session_state[result_key]
