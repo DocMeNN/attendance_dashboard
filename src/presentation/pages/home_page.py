@@ -35,11 +35,12 @@ from pathlib import Path
 # ============================================================================
 import streamlit as st
 
+from src.presentation import context
+
 # ============================================================================
 # Local Imports
 # ============================================================================
-from src.presentation import context
-from src.presentation.components import filters, sidebar
+from src.presentation.components.common import filters, sidebar
 
 # ============================================================================
 # Constants

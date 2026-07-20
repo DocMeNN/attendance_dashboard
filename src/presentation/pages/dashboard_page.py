@@ -37,16 +37,17 @@ from typing import Any, cast
 # ============================================================================
 import streamlit as st
 
+from src.presentation import context
+from src.presentation.components.ai import ministry_ai_panel
+
 # ============================================================================
 # Local Imports
 # ============================================================================
-from src.presentation import context
-from src.presentation.components import (
+from src.presentation.components.common import (
     charts,
     metric_cards,
     tables,
 )
-from src.presentation.components.ai import ai_panel
 from src.presentation.utils import formatters
 from src.presentation.viewmodels.ai_viewmodel import AIViewModel
 
@@ -141,7 +142,7 @@ def render() -> None:
             activity=activity,
         )
 
-        ai_panel.render(
+        ministry_ai_panel.render(
             title="Session Summary",
             button_label="✨ Generate Session Summary",
             callback=context.ai_controller().generate_session_summary,

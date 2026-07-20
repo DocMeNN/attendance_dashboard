@@ -33,8 +33,8 @@ import streamlit as st
 # Local Imports
 # ============================================================================
 from src.config.ai_config import load_ai_config
-from src.presentation.components import metric_cards
 from src.presentation.components.ai import provider_selector
+from src.presentation.components.common import metric_cards
 
 # ============================================================================
 # Settings Page

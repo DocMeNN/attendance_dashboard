@@ -5,13 +5,13 @@ Attendance Application Service
 
 Purpose:
     Provides application-level attendance use cases by orchestrating
-    the SessionBuilder and Domain analytics.
+    Session construction and Domain attendance analytics.
 
 Responsibilities:
     - Build Session aggregates.
+    - Expose attendance-related application workflows.
     - Coordinate attendance analytics.
-    - Coordinate Done analytics.
-    - Expose attendance-related application services.
+    - Coordinate Done acknowledgement analytics.
     - Remain free of business logic.
 
 Rules:
@@ -25,7 +25,8 @@ Rules:
 Notes:
     - Business rules remain inside the Domain layer.
     - This service coordinates Domain components only.
-    - Technology independent.
+    - Attendance is based on WhatsApp participants only.
+    - Missing members cannot be calculated because no member registry exists.
 
 Author:
     OYBS Attendance Dashboard
@@ -69,8 +70,8 @@ class AttendanceService:
     """
     Application service for attendance workflows.
 
-    The service coordinates Session construction and
-    delegates business calculations to the Domain layer.
+    Coordinates Session creation and delegates all
+    attendance calculations to Domain analytics.
     """
 
     def __init__(
@@ -78,7 +79,7 @@ class AttendanceService:
         session_builder: SessionBuilder | None = None,
     ) -> None:
         """
-        Initialize the service.
+        Initialize attendance service.
         """
 
         self._session_builder = (
@@ -86,7 +87,7 @@ class AttendanceService:
         )
 
     # ------------------------------------------------------------------
-    # Session
+    # Session Construction
     # ------------------------------------------------------------------
 
     def build_session(
@@ -95,7 +96,7 @@ class AttendanceService:
         messages: Iterable[Message],
     ) -> Session:
         """
-        Build an immutable Session aggregate.
+        Build immutable Session aggregate.
         """
 
         return self._session_builder.build(
@@ -104,7 +105,7 @@ class AttendanceService:
         )
 
     # ------------------------------------------------------------------
-    # Attendance
+    # Attendance Events
     # ------------------------------------------------------------------
 
     def attendance_events(
@@ -112,7 +113,7 @@ class AttendanceService:
         session: Session,
     ) -> tuple[AttendanceEvent, ...]:
         """
-        Return attendance events.
+        Return attendance events from session.
         """
 
         return session.attendance_events
@@ -122,7 +123,7 @@ class AttendanceService:
         session: Session,
     ) -> tuple[str, ...]:
         """
-        Return unique attendees.
+        Return unique WhatsApp participants who attended.
         """
 
         return get_attendees(
@@ -134,10 +135,12 @@ class AttendanceService:
         session: Session,
     ) -> int:
         """
-        Return unique attendee count.
+        Return unique participant attendance count.
         """
 
-        return len(self.attendees(session))
+        return len(
+            self.attendees(session),
+        )
 
     def attendance_rate(
         self,
@@ -146,6 +149,11 @@ class AttendanceService:
     ) -> float:
         """
         Calculate attendance percentage.
+
+        Note:
+            Expected attendees must come from an external
+            known participant count. WhatsApp export alone
+            cannot determine silent members.
         """
 
         return calculate_attendance_rate(
@@ -159,7 +167,7 @@ class AttendanceService:
         session: Session,
     ) -> float:
         """
-        Calculate attendance rate for a member.
+        Calculate attendance rate for a known participant.
         """
 
         return calculate_member_attendance_rate(
@@ -188,7 +196,7 @@ class AttendanceService:
         session: Session,
     ) -> tuple[DoneEvent, ...]:
         """
-        Return all Done events for the session.
+        Return Done acknowledgement events.
         """
 
         return session.done_events
@@ -198,11 +206,7 @@ class AttendanceService:
         session: Session,
     ) -> int:
         """
-        Return the number of Done events.
-
-        Every valid Done acknowledgement is counted.
-        Duplicate handling is delegated to the Domain
-        analytics layer.
+        Return total Done acknowledgement count.
         """
 
         return count_done_events(
@@ -214,13 +218,41 @@ class AttendanceService:
         session: Session,
     ) -> DoneEvent | None:
         """
-        Return the first Done event recorded for the
-        session.
+        Return first Done acknowledgement event.
         """
 
         return first_done_event(
             session.done_events,
         )
+
+    # ------------------------------------------------------------------
+    # Participant Information
+    # ------------------------------------------------------------------
+
+    def participant_count(
+        self,
+        session: Session,
+    ) -> int:
+        """
+        Return number of unique WhatsApp participants.
+
+        This represents observed participants only.
+        No missing-member calculation is performed.
+        """
+
+        return len(
+            session.unique_attendees,
+        )
+
+    def participants(
+        self,
+        session: Session,
+    ) -> tuple[str, ...]:
+        """
+        Return observed WhatsApp participants.
+        """
+
+        return session.unique_attendees
 
     # ------------------------------------------------------------------
     # Convenience Methods
@@ -244,27 +276,26 @@ class AttendanceService:
         Return True if Done events exist.
         """
 
-        return bool(session.done_events)
+        return session.has_done_events
 
     def is_empty(
         self,
         session: Session,
     ) -> bool:
         """
-        Return True if the session contains no attendance
-        activity.
+        Return True if session contains no events.
         """
 
         return session.is_empty
 
     # ------------------------------------------------------------------
-    # Builder
+    # Builder Access
     # ------------------------------------------------------------------
 
     @property
     def builder(self) -> SessionBuilder:
         """
-        Return the SessionBuilder used by the service.
+        Return the SessionBuilder.
         """
 
         return self._session_builder
@@ -275,14 +306,14 @@ class AttendanceService:
 
     def __repr__(self) -> str:
         """
-        Return the official representation.
+        Return official representation.
         """
 
         return f"{self.__class__.__name__}" f"(builder={self.builder.name})"
 
     def __str__(self) -> str:
         """
-        Return a human-readable representation.
+        Return readable representation.
         """
 
         return self.__repr__()

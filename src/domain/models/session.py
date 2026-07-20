@@ -1,110 +1,113 @@
+# src/domain/models/session.py
+
 """
 Session Domain Model
 
-Purpose:
-    Represents a complete meeting session.
+Purpose
+-------
+Represents a complete meeting session.
 
-Responsibilities:
-    - Aggregate attendance events.
-    - Aggregate Done acknowledgement events.
-    - Aggregate activity events.
-    - Provide session-level business behaviour.
-    - Remain technology independent.
+Responsibilities
+----------------
+- Aggregate attendance events.
+- Aggregate Done acknowledgement events.
+- Aggregate activity events.
+- Provide session-level business behaviour.
+- Remain technology independent.
 
-Notes:
-    - Immutable.
-    - Aggregate Root of the Domain.
-    - Contains no UI, pandas or infrastructure dependencies.
-
-Author:
-    OYBS Attendance Dashboard
-
-Created:
-    July 2026
+Rules
+-----
+- Immutable.
+- Aggregate Root of the Domain.
+- No UI.
+- No pandas.
+- No infrastructure dependencies.
 """
 
 from __future__ import annotations
 
+# ============================================================================
+# Standard Library Imports
+# ============================================================================
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
+# ============================================================================
+# Local Imports
+# ============================================================================
 from .activity_event import ActivityEvent
 from .attendance_event import AttendanceEvent
 from .done_event import DoneEvent
+
+# ============================================================================
+# Session
+# ============================================================================
 
 
 @dataclass(frozen=True, slots=True)
 class Session:
     """
-    Immutable meeting session.
-
-    A Session is the Aggregate Root of the Domain.
-
-    It represents every significant event that belongs to a
-    single meeting session.
-
-    The Session owns:
-
-    - Attendance events
-    - Done acknowledgement events
-    - Activity events
-
-    Business analytics operate on a completed Session.
+    Immutable meeting session aggregate.
     """
 
     session_date: date
 
-    attendance_events: tuple[AttendanceEvent, ...] = field(default_factory=tuple)
+    attendance_events: tuple[AttendanceEvent, ...] = field(
+        default_factory=tuple,
+    )
 
-    done_events: tuple[DoneEvent, ...] = field(default_factory=tuple)
+    done_events: tuple[DoneEvent, ...] = field(
+        default_factory=tuple,
+    )
 
-    activity_events: tuple[ActivityEvent, ...] = field(default_factory=tuple)
+    activity_events: tuple[ActivityEvent, ...] = field(
+        default_factory=tuple,
+    )
 
     def __post_init__(self) -> None:
         """
         Validate and normalize the session.
         """
 
-        if not isinstance(self.session_date, date):
-            raise TypeError("session_date must be a date.")
-
-        attendance = tuple(
-            sorted(
-                self.attendance_events,
-                key=lambda event: event.timestamp,
+        if not isinstance(
+            self.session_date,
+            date,
+        ):
+            raise TypeError(
+                "session_date must be a date.",
             )
-        )
-
-        done = tuple(
-            sorted(
-                self.done_events,
-                key=lambda event: event.timestamp,
-            )
-        )
-
-        activity = tuple(
-            sorted(
-                self.activity_events,
-                key=lambda event: event.timestamp,
-            )
-        )
 
         object.__setattr__(
             self,
             "attendance_events",
-            attendance,
+            tuple(
+                sorted(
+                    self.attendance_events,
+                    key=lambda event: event.timestamp,
+                )
+            ),
         )
 
         object.__setattr__(
             self,
             "done_events",
-            done,
+            tuple(
+                sorted(
+                    self.done_events,
+                    key=lambda event: event.timestamp,
+                )
+            ),
         )
 
         object.__setattr__(
             self,
             "activity_events",
-            activity,
+            tuple(
+                sorted(
+                    self.activity_events,
+                    key=lambda event: event.timestamp,
+                )
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -169,6 +172,30 @@ class Session:
         return tuple(attendees)
 
     @property
+    def present_attendees(self) -> tuple[str, ...]:
+        """
+        Return attendees marked as present.
+
+        Attendance is derived solely from participants
+        found in the exported WhatsApp chat.
+        """
+
+        seen: set[str] = set()
+        attendees: list[str] = []
+
+        for event in self.attendance_events:
+            if event.is_absent:
+                continue
+
+            key = event.attendee.casefold()
+
+            if key not in seen:
+                seen.add(key)
+                attendees.append(event.attendee)
+
+        return tuple(attendees)
+
+    @property
     def attendee_count(self) -> int:
         """
         Return unique attendee count.
@@ -176,10 +203,49 @@ class Session:
         return len(self.unique_attendees)
 
     @property
+    def present_count(self) -> int:
+        """
+        Return number of participants present.
+        """
+        return len(self.present_attendees)
+
+    @property
+    def late_count(self) -> int:
+        """
+        Return number of late participants.
+        """
+        return sum(event.is_late for event in self.attendance_events)
+
+    @property
+    def absent_count(self) -> int:
+        """
+        Return number of explicit absent events.
+
+        WhatsApp exports do not contain a complete
+        membership register, so this counts only
+        attendance events explicitly classified as
+        ABSENT.
+        """
+        return sum(event.is_absent for event in self.attendance_events)
+
+    @property
+    def attendance_types(self) -> dict[str, int]:
+        """
+        Return attendance classification counts.
+        """
+        return {
+            "present": self.present_count,
+            "late": self.late_count,
+            "absent": self.absent_count,
+            "done": self.done_count,
+        }
+
+    @property
     def first_attendance(self) -> AttendanceEvent | None:
         """
         Return first attendance event.
         """
+
         if not self.attendance_events:
             return None
 
@@ -190,6 +256,7 @@ class Session:
         """
         Return last attendance event.
         """
+
         if not self.attendance_events:
             return None
 
@@ -200,6 +267,7 @@ class Session:
         """
         Return first attendee.
         """
+
         event = self.first_attendance
 
         if event is None:
@@ -216,6 +284,7 @@ class Session:
         """
         Return first Done acknowledgement.
         """
+
         if not self.done_events:
             return None
 
@@ -226,6 +295,7 @@ class Session:
         """
         Return last Done acknowledgement.
         """
+
         if not self.done_events:
             return None
 
@@ -247,6 +317,7 @@ class Session:
         """
         Return first activity event.
         """
+
         if not self.activity_events:
             return None
 
@@ -257,6 +328,7 @@ class Session:
         """
         Return last activity event.
         """
+
         if not self.activity_events:
             return None
 
@@ -269,9 +341,12 @@ class Session:
     @property
     def all_events(
         self,
-    ) -> tuple[AttendanceEvent | DoneEvent | ActivityEvent, ...]:
+    ) -> tuple[
+        AttendanceEvent | DoneEvent | ActivityEvent,
+        ...,
+    ]:
         """
-        Return all events in chronological order.
+        Return every event in chronological order.
         """
 
         events = (
@@ -290,7 +365,7 @@ class Session:
     @property
     def start_time(self) -> datetime | None:
         """
-        Return first recorded event timestamp.
+        Return first event timestamp.
         """
 
         if not self.all_events:
@@ -301,7 +376,7 @@ class Session:
     @property
     def end_time(self) -> datetime | None:
         """
-        Return last recorded event timestamp.
+        Return last event timestamp.
         """
 
         if not self.all_events:
@@ -366,7 +441,10 @@ class Session:
 
         normalized = attendee.casefold()
 
-        return normalized in {member.casefold() for member in self.unique_attendees}
+        return any(
+            participant.casefold() == normalized
+            for participant in self.unique_attendees
+        )
 
     def done_exists(
         self,
@@ -395,9 +473,13 @@ class Session:
         return {
             "session_date": self.session_date,
             "attendance_count": self.attendance_count,
+            "present_count": self.present_count,
+            "late_count": self.late_count,
+            "absent_count": self.absent_count,
             "done_count": self.done_count,
             "activity_count": self.activity_count,
             "attendee_count": self.attendee_count,
+            "attendance_types": self.attendance_types,
             "total_events": self.total_events,
             "start_time": self.start_time,
             "end_time": self.end_time,
@@ -426,9 +508,10 @@ class Session:
         """
 
         return (
-            f"Session("
+            "Session("
             f"date={self.session_date}, "
-            f"attendees={self.attendee_count}, "
+            f"participants={self.attendee_count}, "
+            f"present={self.present_count}, "
             f"done={self.done_count}, "
             f"activities={self.activity_count})"
         )

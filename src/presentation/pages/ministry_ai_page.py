@@ -1,4 +1,4 @@
-# src/presentation/pages/aam_report_page.py
+# src/presentation/pages/ministry_ai_panel.py
 
 """
 AAM Report Page
@@ -33,8 +33,8 @@ import streamlit as st
 # Local Imports
 # ============================================================================
 from src.presentation import context
-from src.presentation.components import metric_cards
-from src.presentation.components.ai import ai_panel
+from src.presentation.components.ai import ministry_ai_panel
+from src.presentation.components.common import metric_cards
 from src.presentation.viewmodels.ai_viewmodel import AIViewModel
 
 # ============================================================================
@@ -99,7 +99,7 @@ def render() -> None:
         ("Generate an AI-assisted report suitable " "for ministry leadership."),
     )
 
-    ai_panel.render(
+    ministry_ai_panel.render(
         title="Leadership Report",
         button_label="✨ Generate Ministry Report",
         callback=context.ai_controller().generate_executive_summary,

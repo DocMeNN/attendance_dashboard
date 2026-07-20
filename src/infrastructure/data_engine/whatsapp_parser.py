@@ -5,39 +5,40 @@ WhatsApp Export Parser
 
 Purpose
 -------
-Parses native WhatsApp exported chat files into RawMessageRecord objects.
+Parses native WhatsApp exported chat files into
+RawMessageRecord objects.
 
-Unlike parser.py, which parses the project's canonical tab-separated
-intermediate format, this module understands the text format produced
-directly by WhatsApp.
+Unlike parser.py, which parses the project's canonical
+tab-separated intermediate format, this module understands
+the text format produced directly by WhatsApp.
 
-Supported formats
+Supported Formats
 -----------------
+Android
 
-Android user message::
+    2/8/26, 11:02 - John: Hello
 
-    2/8/26, 11:02 - Jane Doe: Hello
+    2/8/26, 11:02 AM - John: Hello
 
-Android system message::
+iPhone
 
-    2/8/26, 09:27 - Messages and calls are end-to-end encrypted.
+    [08/02/2026, 11:02:15] John: Hello
 
-iPhone user message::
+New WhatsApp
 
-    [08/02/2026, 11:02:15] Jane Doe: Hello
+    [1/12/2022, 9:08:52 PM] John: Hello
 
 Responsibilities
 ----------------
 - Detect WhatsApp record boundaries.
-- Combine multiline messages.
+- Merge multiline messages.
 - Parse timestamps.
 - Extract sender names.
 - Ignore WhatsApp system events.
 - Create RawMessageRecord objects.
 
-This module intentionally does NOT:
+This module intentionally does NOT
 
-- Clean messages
 - Detect attendance
 - Detect activities
 - Apply business rules
@@ -77,25 +78,39 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# Record Detection Patterns
+# Unicode Normalization
 # ============================================================================
 
 #
-# These expressions are intentionally separated from the message parsing
-# expressions.
+# Modern WhatsApp exports contain several Unicode whitespace
+# characters that visually resemble normal spaces but prevent
+# regex matching.
 #
-# Their only responsibility is determining whether a line begins a new
-# WhatsApp record.
-#
+
+UNICODE_TRANSLATION = str.maketrans(
+    {
+        "\u202f": " ",  # Narrow no-break space
+        "\u00a0": " ",  # Non-breaking space
+        "\u200e": "",  # Left-to-right mark
+        "\u200f": "",  # Right-to-left mark
+        "\u2060": "",  # Word joiner
+        "\ufeff": "",  # BOM
+    }
+)
+
+# ============================================================================
+# Record Detection
+# ============================================================================
 
 ANDROID_RECORD_START_PATTERN = re.compile(
     r"""
 ^
 \d{1,2}/\d{1,2}/\d{2,4},
-\s+
+\s*
 \d{1,2}:\d{2}
+(?::\d{2})?
 (?:\s?(?:AM|PM|am|pm))?
-\s+-\s+
+\s*-\s*
 """,
     re.VERBOSE,
 )
@@ -104,11 +119,12 @@ IPHONE_RECORD_START_PATTERN = re.compile(
     r"""
 ^\[
 \d{1,2}/\d{1,2}/\d{2,4},
-\s+
+\s*
 \d{1,2}:\d{2}
 (?::\d{2})?
+(?:\s?(?:AM|PM|am|pm))?
 \]
-\s+
+\s*
 """,
     re.VERBOSE,
 )
@@ -121,10 +137,10 @@ ANDROID_MESSAGE_PATTERN = re.compile(
     r"""
 ^
 (?P<date>\d{1,2}/\d{1,2}/\d{2,4}),
-\s+
-(?P<time>\d{1,2}:\d{2})
+\s*
+(?P<time>\d{1,2}:\d{2}(?::\d{2})?)
 (?:\s?(?P<ampm>AM|PM|am|pm))?
-\s+-\s+
+\s*-\s*
 (?P<sender>.+?)
 :
 \s?
@@ -138,10 +154,11 @@ IPHONE_MESSAGE_PATTERN = re.compile(
     r"""
 ^\[
 (?P<date>\d{1,2}/\d{1,2}/\d{2,4}),
-\s+
+\s*
 (?P<time>\d{1,2}:\d{2}(?::\d{2})?)
+(?:\s?(?P<ampm>AM|PM|am|pm))?
 \]
-\s+
+\s*
 (?P<sender>.+?)
 :
 \s?
@@ -149,42 +166,21 @@ IPHONE_MESSAGE_PATTERN = re.compile(
 $
 """,
     re.VERBOSE | re.DOTALL,
-)
-IPHONE_MESSAGE_PATTERN = re.compile(
-    r"""
-^\[
-(?P<date>\d{1,2}/\d{1,2}/\d{2,4}),
-\s+
-(?P<time>\d{1,2}:\d{2}(?::\d{2})?)
-\]
-\s+
-(?P<sender>.+?)
-:
-\s?
-(?P<message>.*)
-$
-""",
-    re.VERBOSE,
 )
 
 # ============================================================================
 # System Message Patterns
 # ============================================================================
 
-#
-# These represent WhatsApp-generated events.
-# They are valid export records but should not become RawMessageRecord objects.
-#
-
 ANDROID_SYSTEM_PATTERN = re.compile(
     r"""
 ^
 (?P<date>\d{1,2}/\d{1,2}/\d{2,4}),
-\s+
-(?P<time>\d{1,2}:\d{2})
+\s*
+(?P<time>\d{1,2}:\d{2}(?::\d{2})?)
 (?:\s?(?P<ampm>AM|PM|am|pm))?
-\s+-\s+
-(?P<message>.*)
+\s*-\s*
+(?P<message>.+)
 $
 """,
     re.VERBOSE | re.DOTALL,
@@ -194,27 +190,36 @@ IPHONE_SYSTEM_PATTERN = re.compile(
     r"""
 ^\[
 (?P<date>\d{1,2}/\d{1,2}/\d{2,4}),
-\s+
+\s*
 (?P<time>\d{1,2}:\d{2}(?::\d{2})?)
+(?:\s?(?P<ampm>AM|PM|am|pm))?
 \]
-\s+
-(?P<message>.*)
+\s*
+(?P<message>.+)
 $
 """,
     re.VERBOSE | re.DOTALL,
 )
-IPHONE_SYSTEM_PATTERN = re.compile(
-    r"""
-^\[
-(?P<date>\d{1,2}/\d{1,2}/\d{2,4}),
-\s+
-(?P<time>\d{1,2}:\d{2}(?::\d{2})?)
-\]
-\s+
-(?P<message>.+)
-$
-""",
-    re.VERBOSE,
+
+# ============================================================================
+# Known WhatsApp System Keywords
+# ============================================================================
+
+SYSTEM_KEYWORDS = (
+    "messages and calls are end-to-end encrypted",
+    "created this group",
+    "changed the group description",
+    "changed the group icon",
+    "changed this group's icon",
+    "joined using a group link",
+    "added",
+    "removed",
+    "left",
+    "was added",
+    "was removed",
+    "security code changed",
+    "you joined",
+    "you were added",
 )
 
 # ============================================================================
@@ -231,7 +236,7 @@ def parse_whatsapp_chat(
     Parameters
     ----------
     raw_text:
-        Raw WhatsApp export.
+        Raw WhatsApp export text.
 
     Returns
     -------
@@ -239,6 +244,8 @@ def parse_whatsapp_chat(
     """
 
     logger.info("Parsing WhatsApp export.")
+
+    raw_text = _normalize_text(raw_text)
 
     logical_messages = _build_logical_messages(raw_text)
 
@@ -254,13 +261,11 @@ def parse_whatsapp_chat(
             line_number=line_number,
         )
 
-        if record is None:
-            continue
-
-        records.append(record)
+        if record is not None:
+            records.append(record)
 
     logger.info(
-        "Parsed %d WhatsApp messages.",
+        "Successfully parsed %d WhatsApp messages.",
         len(records),
     )
 
@@ -278,16 +283,13 @@ def _build_logical_messages(
     """
     Build logical WhatsApp records.
 
-    WhatsApp exports may contain:
+    Every record begins with a timestamp.
 
-    - User messages
-    - System events
-    - Multi-line messages
-    - Blank lines within messages
+    Any following lines belong to that record until another
+    timestamp is encountered.
 
-    A new logical record always begins with a timestamp.
-    Every subsequent line belongs to that record until the
-    next timestamp is encountered.
+    This implementation also tolerates malformed lines before
+    the first valid WhatsApp record.
     """
 
     logical_messages: list[tuple[int, str]] = []
@@ -295,11 +297,22 @@ def _build_logical_messages(
     current_lines: list[str] = []
     current_line_number: int | None = None
 
-    for line_number, line in enumerate(
+    for line_number, raw_line in enumerate(
         raw_text.splitlines(),
         start=1,
     ):
 
+        line = raw_line.rstrip()
+
+        #
+        # Ignore completely blank lines before a record.
+        #
+        if not current_lines and not line.strip():
+            continue
+
+        #
+        # New WhatsApp record detected.
+        #
         if _starts_new_message(line):
 
             if current_lines:
@@ -317,14 +330,19 @@ def _build_logical_messages(
             continue
 
         #
-        # Ignore anything that appears before the first
-        # WhatsApp record.
+        # Ignore malformed preamble before the first record.
         #
         if not current_lines:
+
+            logger.debug(
+                "Ignoring non-record line %d.",
+                line_number,
+            )
+
             continue
 
         #
-        # Preserve blank lines.
+        # Continuation of previous message.
         #
         current_lines.append(line)
 
@@ -345,20 +363,45 @@ def _build_logical_messages(
     return logical_messages
 
 
+# ============================================================================
+# Record Detection
+# ============================================================================
+
+
 def _starts_new_message(
     line: str,
 ) -> bool:
     """
-    Determine whether a line begins a new WhatsApp record.
-
-    This function only detects the beginning of a record.
-    It does not determine whether the record is a user
-    message or a WhatsApp system event.
+    Determine whether a line begins a WhatsApp record.
     """
 
-    return (
-        ANDROID_RECORD_START_PATTERN.match(line) is not None
-        or IPHONE_RECORD_START_PATTERN.match(line) is not None
+    line = line.translate(UNICODE_TRANSLATION)
+
+    return bool(
+        ANDROID_RECORD_START_PATTERN.match(line)
+        or IPHONE_RECORD_START_PATTERN.match(line)
+    )
+
+
+# ============================================================================
+# Text Normalization
+# ============================================================================
+
+
+def _normalize_text(
+    raw_text: str,
+) -> str:
+    """
+    Normalize exported WhatsApp text.
+
+    Modern WhatsApp exports include invisible Unicode
+    formatting characters that interfere with parsing.
+
+    This function removes them before parsing begins.
+    """
+
+    return raw_text.translate(
+        UNICODE_TRANSLATION,
     )
 
 
@@ -378,11 +421,15 @@ def _parse_message(
     Returns
     -------
     RawMessageRecord
-        When the record is a user message.
+        Parsed user message.
 
     None
-        When the record is a valid WhatsApp system event.
+        WhatsApp system message.
     """
+
+    message = message.translate(
+        UNICODE_TRANSLATION,
+    )
 
     #
     # Android user message
@@ -414,31 +461,53 @@ def _parse_message(
     # Android system event
     #
 
-    if ANDROID_SYSTEM_PATTERN.match(message):
+    match = ANDROID_SYSTEM_PATTERN.match(message)
 
-        logger.debug(
-            "Ignoring Android system event on line %d.",
-            line_number,
-        )
+    if match is not None:
 
-        return None
+        if _is_system_message(
+            match.group("message"),
+        ):
+
+            logger.debug(
+                "Ignoring Android system event on line %d.",
+                line_number,
+            )
+
+            return None
 
     #
     # iPhone system event
     #
 
-    if IPHONE_SYSTEM_PATTERN.match(message):
+    match = IPHONE_SYSTEM_PATTERN.match(message)
 
-        logger.debug(
-            "Ignoring iPhone system event on line %d.",
-            line_number,
-        )
+    if match is not None:
 
-        return None
+        if _is_system_message(
+            match.group("message"),
+        ):
 
-    raise InvalidExportFormatError(
-        ("Unsupported WhatsApp export format " f"at line {line_number}.")
+            logger.debug(
+                "Ignoring iPhone system event on line %d.",
+                line_number,
+            )
+
+            return None
+
+    #
+    # Unknown record.
+    #
+    # Do NOT abort the entire import because one record
+    # could not be parsed.
+    #
+
+    logger.warning(
+        "Skipping malformed WhatsApp record on line %d.",
+        line_number,
     )
+
+    return None
 
 
 # ============================================================================
@@ -452,7 +521,7 @@ def _build_record(
     line_number: int,
 ) -> RawMessageRecord:
     """
-    Build a RawMessageRecord from a regex match.
+    Build RawMessageRecord from regex match.
     """
 
     timestamp = _parse_timestamp(
@@ -464,7 +533,7 @@ def _build_record(
 
     sender = match.group("sender").strip()
 
-    message = match.group("message")
+    message = match.group("message").strip()
 
     return RawMessageRecord(
         timestamp=timestamp,
@@ -472,6 +541,27 @@ def _build_record(
         message=message,
         source_line=line_number,
     )
+
+
+# ============================================================================
+# System Message Detection
+# ============================================================================
+
+
+def _is_system_message(
+    text: str,
+) -> bool:
+    """
+    Determine whether a parsed record is a WhatsApp
+    system-generated event.
+
+    This allows us to ignore events without relying
+    solely on regex structure.
+    """
+
+    normalized = text.casefold()
+
+    return any(keyword in normalized for keyword in SYSTEM_KEYWORDS)
 
 
 # ============================================================================
@@ -486,20 +576,48 @@ def _parse_timestamp(
     ampm: str | None,
     line_number: int,
 ) -> datetime:
+    """
+    Parse a WhatsApp timestamp.
 
-    timestamp = f"{date_text} " f"{time_text}" f"{' ' + ampm if ampm else ''}"
+    Supports:
+
+    - DD/MM/YY
+    - DD/MM/YYYY
+    - MM/DD/YY
+    - MM/DD/YYYY
+    - 24-hour time
+    - 12-hour time
+    - Optional seconds
+    """
+
+    timestamp = f"{date_text} {time_text}"
+
+    if ampm:
+        timestamp += f" {ampm.upper()}"
 
     formats = (
+        # -----------------------------------------------------------------
+        # Month / Day
+        # -----------------------------------------------------------------
         "%m/%d/%y %H:%M",
         "%m/%d/%Y %H:%M",
+        "%m/%d/%y %H:%M:%S",
+        "%m/%d/%Y %H:%M:%S",
         "%m/%d/%y %I:%M %p",
         "%m/%d/%Y %I:%M %p",
+        "%m/%d/%y %I:%M:%S %p",
+        "%m/%d/%Y %I:%M:%S %p",
+        # -----------------------------------------------------------------
+        # Day / Month
+        # -----------------------------------------------------------------
         "%d/%m/%y %H:%M",
         "%d/%m/%Y %H:%M",
+        "%d/%m/%y %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
         "%d/%m/%y %I:%M %p",
         "%d/%m/%Y %I:%M %p",
-        "%d/%m/%Y %H:%M:%S",
-        "%d/%m/%y %H:%M:%S",
+        "%d/%m/%y %I:%M:%S %p",
+        "%d/%m/%Y %I:%M:%S %p",
     )
 
     for fmt in formats:
@@ -514,7 +632,7 @@ def _parse_timestamp(
             continue
 
     raise ParsingError(
-        (f"Unable to parse timestamp '{timestamp}' " f"on line {line_number}.")
+        (f"Unable to parse timestamp " f"'{timestamp}' " f"on line {line_number}.")
     )
 
 

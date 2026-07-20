@@ -1,4 +1,4 @@
-# src/presentation/components/ai/ai_panel.py
+# src/presentation/components/ai/ministry_ai_panel.py
 
 """
 AI Panel
@@ -29,6 +29,7 @@ from __future__ import annotations
 # Standard Library Imports
 # ============================================================================
 from collections.abc import Callable
+import traceback
 from typing import Any
 
 # ============================================================================
@@ -60,39 +61,10 @@ def render(
     result_key: str,
     button_key: str | None = None,
     help_text: str | None = None,
-    empty_message: str = ("No AI result has been generated yet."),
+    empty_message: str = "No AI result has been generated yet.",
 ) -> None:
     """
     Render a reusable AI interaction panel.
-
-    Parameters
-    ----------
-    title:
-        Panel title.
-
-    button_label:
-        Text displayed on the AI button.
-
-    callback:
-        Controller method executed when the
-        button is pressed.
-
-    callback_kwargs:
-        Keyword arguments supplied to the callback.
-
-    result_key:
-        Streamlit session-state key used to
-        store the generated result.
-
-    button_key:
-        Optional unique Streamlit button key.
-
-    help_text:
-        Tooltip shown on hover.
-
-    empty_message:
-        Placeholder displayed before the first
-        AI request.
     """
 
     if result_key not in st.session_state:
@@ -112,13 +84,63 @@ def render(
 
             with ai_loading.render():
 
+                # ==========================================================
+                # DIAGNOSTIC
+                # ==========================================================
+
+                st.write("### Callback")
+                st.code(repr(callback), language="text")
+
+                st.write("### Callback Module")
+                st.code(
+                    getattr(callback, "__module__", "UNKNOWN"),
+                    language="text",
+                )
+
+                st.write("### Callback Qualname")
+                st.code(
+                    getattr(callback, "__qualname__", "UNKNOWN"),
+                    language="text",
+                )
+
+                st.write("### Callback Arguments")
+                st.json(callback_kwargs)
+
                 result = callback(
                     **callback_kwargs,
                 )
 
+                st.write("### Returned Result Type")
+                st.code(type(result).__name__, language="text")
+
+                st.write("### Returned Result Preview")
+                st.code(str(result)[:1000], language="text")
+
                 st.session_state[result_key] = result
 
         except Exception as exc:
+
+            st.error("🔍 AI Exception Captured")
+
+            st.write("### Exception Type")
+            st.code(
+                type(exc).__name__,
+                language="text",
+            )
+
+            st.write("### Exception")
+            st.code(
+                str(exc),
+                language="text",
+            )
+
+            st.write("### Full Traceback")
+            st.code(
+                traceback.format_exc(),
+                language="text",
+            )
+
+            st.exception(exc)
 
             ai_error.render(
                 message="Unable to complete the AI request.",
@@ -156,11 +178,6 @@ def clear_result(
 ) -> None:
     """
     Clear a stored AI result.
-
-    Parameters
-    ----------
-    result_key:
-        Session-state key containing the AI result.
     """
 
     st.session_state[result_key] = ""
@@ -171,11 +188,6 @@ def has_result(
 ) -> bool:
     """
     Return True if an AI result exists.
-
-    Parameters
-    ----------
-    result_key:
-        Session-state key containing the AI result.
     """
 
     return bool(
@@ -191,11 +203,6 @@ def get_result(
 ) -> str:
     """
     Return a stored AI result.
-
-    Parameters
-    ----------
-    result_key:
-        Session-state key containing the AI result.
     """
 
     return str(

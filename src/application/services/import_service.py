@@ -10,8 +10,7 @@ Coordinates the complete WhatsApp chat import workflow.
 Responsibilities
 ----------------
 - Load a WhatsApp chat export.
-- Detect the export format.
-- Delegate parsing to the appropriate parser.
+- Delegate parsing.
 - Clean parsed records.
 - Validate cleaned records.
 - Build a Session aggregate.
@@ -48,6 +47,9 @@ from pathlib import Path
 from src.application.services.dashboard_service import DashboardService
 from src.domain.models.session import Session
 from src.infrastructure.data_engine.cleaner import clean_records
+from src.infrastructure.data_engine.exceptions import (
+    InvalidExportFormatError,
+)
 from src.infrastructure.data_engine.loader import load_chat
 from src.infrastructure.data_engine.models import RawMessageRecord
 from src.infrastructure.data_engine.parser import parse_chat
@@ -63,7 +65,7 @@ from src.infrastructure.data_engine.whatsapp_parser import (
 
 class ImportService:
     """
-    Application service responsible for importing WhatsApp chat exports.
+    Application service responsible for importing chat exports.
     """
 
     def __init__(
@@ -87,17 +89,7 @@ class ImportService:
         filepath: str | Path,
     ) -> Session:
         """
-        Import a WhatsApp chat export and build a Session.
-
-        Parameters
-        ----------
-        filepath
-            Path to the exported chat file.
-
-        Returns
-        -------
-        Session
-            Fully constructed Session aggregate.
+        Import a chat export and build a Session.
         """
 
         raw_text = load_chat(
@@ -135,45 +127,25 @@ class ImportService:
         raw_text: str,
     ) -> list[RawMessageRecord]:
         """
-        Parse the chat using the appropriate parser.
+        Parse records.
 
-        Native WhatsApp exports are parsed by
-        ``whatsapp_parser.py``.
+        Native WhatsApp exports are attempted first.
 
-        Canonical tab-separated exports are parsed by
-        ``parser.py``.
+        If the input is not a supported WhatsApp export,
+        fall back to the canonical parser.
         """
 
-        if self._is_whatsapp_export(
-            raw_text,
-        ):
+        try:
+
             return parse_whatsapp_chat(
                 raw_text,
             )
 
-        return parse_chat(
-            raw_text,
-        )
+        except InvalidExportFormatError:
 
-    def _is_whatsapp_export(
-        self,
-        raw_text: str,
-    ) -> bool:
-        """
-        Return True when the text appears to be a
-        native WhatsApp export.
-        """
-
-        for line in raw_text.splitlines():
-
-            line = line.strip()
-
-            if not line:
-                continue
-
-            return " - " in line and ":" in line and "\t" not in line
-
-        return False
+            return parse_chat(
+                raw_text,
+            )
 
     # ------------------------------------------------------------------
     # Service Accessor

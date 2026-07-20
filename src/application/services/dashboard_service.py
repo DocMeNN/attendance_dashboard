@@ -22,9 +22,9 @@ Rules:
     - No business rules.
 
 Notes:
-    - Delegates all business calculations to the Domain layer.
-    - Delegates Session construction to the SessionBuilder.
-    - Acts as the primary service consumed by the Presentation layer.
+    - Delegates business calculations to Domain services.
+    - Delegates Session construction to AttendanceService.
+    - Acts as the primary service consumed by Presentation layer.
 
 Author:
     OYBS Attendance Dashboard
@@ -61,7 +61,7 @@ class DashboardService:
         activity_service: ActivityService | None = None,
     ) -> None:
         """
-        Initialize the DashboardService.
+        Initialize dashboard service.
         """
 
         self._attendance_service = (
@@ -84,10 +84,7 @@ class DashboardService:
         messages: Iterable[Message],
     ) -> Session:
         """
-        Build a Session aggregate.
-
-        The AttendanceService owns Session construction,
-        ensuring there is a single orchestration path.
+        Build Session aggregate.
         """
 
         return self._attendance_service.build_session(
@@ -105,33 +102,26 @@ class DashboardService:
         expected_attendees: int,
     ) -> dict[str, object]:
         """
-        Return a dashboard-ready summary.
+        Return dashboard metrics.
         """
 
         return {
             "session_date": session.session_date,
-            "attendance_count": self._attendance_service.attendance_count(
-                session,
-            ),
+            # Keys expected by presentation.formatters
+            "attendance_count": session.attendee_count,
             "attendance_rate": self._attendance_service.attendance_rate(
                 session,
                 expected_attendees,
             ),
-            "done_count": self._attendance_service.done_count(
-                session,
-            ),
-            "activity_count": self._activity_service.activity_count(
-                session,
-            ),
-            "first_done": self._attendance_service.first_done(
-                session,
-            ),
-            "first_activity": self._activity_service.first_activity(
-                session,
-            ),
-            "last_activity": self._activity_service.last_activity(
-                session,
-            ),
+            "done_count": session.done_count,
+            "activity_count": session.activity_count,
+            # Additional dashboard information
+            "attendance_events": session.attendance_count,
+            "participants": session.attendee_count,
+            "first_done": session.first_done,
+            "first_activity": session.first_activity,
+            "last_activity": session.last_activity,
+            "duration": session.duration,
         }
 
     # ------------------------------------------------------------------
@@ -149,6 +139,9 @@ class DashboardService:
 
         return {
             "attendees": self._attendance_service.attendees(
+                session,
+            ),
+            "participants": self._attendance_service.participant_count(
                 session,
             ),
             "attendance_count": self._attendance_service.attendance_count(
@@ -182,16 +175,12 @@ class DashboardService:
             "activity_types": self._activity_service.activity_counts(
                 session,
             ),
-            "first_activity": self._activity_service.first_activity(
-                session,
-            ),
-            "last_activity": self._activity_service.last_activity(
-                session,
-            ),
+            "first_activity": session.first_activity,
+            "last_activity": session.last_activity,
         }
 
     # ------------------------------------------------------------------
-    # Session Status
+    # Session Summary
     # ------------------------------------------------------------------
 
     def session_summary(
@@ -199,7 +188,7 @@ class DashboardService:
         session: Session,
     ) -> dict[str, object]:
         """
-        Return general session information.
+        Return session information.
         """
 
         return {
@@ -207,6 +196,7 @@ class DashboardService:
             "start_time": session.start_time,
             "end_time": session.end_time,
             "duration": session.duration,
+            "participants": session.attendee_count,
             "attendance_events": session.attendance_count,
             "done_events": session.done_count,
             "activity_events": session.activity_count,
@@ -225,9 +215,7 @@ class DashboardService:
         Return True if attendance exists.
         """
 
-        return self._attendance_service.has_attendance(
-            session,
-        )
+        return session.has_attendance
 
     def has_activities(
         self,
@@ -237,16 +225,14 @@ class DashboardService:
         Return True if activities exist.
         """
 
-        return self._activity_service.has_activities(
-            session,
-        )
+        return session.has_activities
 
     def is_empty(
         self,
         session: Session,
     ) -> bool:
         """
-        Return True if the session contains no events.
+        Return True if session has no events.
         """
 
         return session.is_empty
@@ -258,7 +244,7 @@ class DashboardService:
     @property
     def attendance_service(self) -> AttendanceService:
         """
-        Return the AttendanceService instance.
+        Return AttendanceService.
         """
 
         return self._attendance_service
@@ -266,7 +252,7 @@ class DashboardService:
     @property
     def activity_service(self) -> ActivityService:
         """
-        Return the ActivityService instance.
+        Return ActivityService.
         """
 
         return self._activity_service
@@ -277,7 +263,7 @@ class DashboardService:
 
     def __repr__(self) -> str:
         """
-        Return the official representation.
+        Return official representation.
         """
 
         return (
@@ -290,7 +276,7 @@ class DashboardService:
 
     def __str__(self) -> str:
         """
-        Return a human-readable representation.
+        Return readable representation.
         """
 
         return self.__repr__()
