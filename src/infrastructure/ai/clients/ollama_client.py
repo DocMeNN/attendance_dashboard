@@ -61,16 +61,9 @@ class OllamaClient:
         Initialize the client.
         """
 
-        self._base_url = (
-            config.base_url
-            or "http://127.0.0.1:11434"
-        ).rstrip("/")
+        self._base_url = (config.base_url or "http://127.0.0.1:11434").rstrip("/")
 
-        self._timeout = (
-            config.timeout
-            if config.timeout and config.timeout > 0
-            else 120
-        )
+        self._timeout = config.timeout if config.timeout and config.timeout > 0 else 120
 
     # ------------------------------------------------------------------
     # Generate
@@ -81,7 +74,7 @@ class OllamaClient:
         *,
         model: str,
         prompt: str,
-        system_prompt: str |None,
+        system_prompt: str | None,
         temperature: float,
     ) -> dict[str, Any]:
         """
@@ -138,9 +131,7 @@ class OllamaClient:
             print("=" * 80)
 
         except requests.ConnectionError as exc:
-            raise AIConnectionError(
-                "Unable to connect to the Ollama server."
-            ) from exc
+            raise AIConnectionError("Unable to connect to the Ollama server.") from exc
 
         except requests.Timeout as exc:
 
@@ -161,19 +152,13 @@ class OllamaClient:
             ) from exc
 
         except requests.RequestException as exc:
-            raise AIConnectionError(
-                "Unexpected Ollama connection failure."
-            ) from exc
+            raise AIConnectionError("Unexpected Ollama connection failure.") from exc
 
         if response.status_code == 401:
-            raise AIAuthenticationError(
-                "Ollama authentication failed."
-            )
+            raise AIAuthenticationError("Ollama authentication failed.")
 
         if not response.ok:
-            raise AIProviderError(
-                f"Ollama returned HTTP {response.status_code}."
-            )
+            raise AIProviderError(f"Ollama returned HTTP {response.status_code}.")
 
         return cast(
             dict[str, Any],

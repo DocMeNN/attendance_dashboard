@@ -5,89 +5,125 @@ Domain Leaderboard Analytics
 
 Purpose
 -------
-Provides pure business logic for ranking attendance and activity
-participation across members.
+Provides pure business logic for ranking member participation
+across sessions.
 
 Responsibilities
 ----------------
-- Rank attendees by attendance frequency.
-- Rank attendees by lateness frequency.
-- Rank senders by activity frequency.
+- Rank members by participation frequency.
+- Rank members by activity frequency.
+- Rank members by Scripture Reading acknowledgement frequency.
 - Return top-ranked entries.
 - Locate a participant's ranking.
-
-Rules
------
-- No pandas.
-- No Streamlit.
-- No file I/O.
-- No database access.
-- No infrastructure dependencies.
 
 Notes
 -----
 - Operates only on immutable Domain models.
 - Rankings are returned in descending order.
+- Attendance is participation of any kind within a session.
+- There is no late or absent attendance classification.
 """
 
 from __future__ import annotations
 
-# Standard library imports
+# ============================================================================
+# Standard Library Imports
+# ============================================================================
 from collections import Counter
-from typing import Iterable
+from collections.abc import Iterable
 
-# Third-party imports
-# None
-# Local imports
-from src.domain.enums.attendance_type import AttendanceType
+# ============================================================================
+# Local Imports
+# ============================================================================
 from src.domain.models.activity_event import ActivityEvent
 from src.domain.models.attendance_event import AttendanceEvent
 
+# ============================================================================
+# Participation Rankings
+# ============================================================================
 
-def rank_attendance(
+
+def rank_participation(
     attendance_events: Iterable[AttendanceEvent],
 ) -> tuple[tuple[str, int], ...]:
     """
-    Rank attendees by attendance count.
+    Rank members by participation frequency.
 
-    PRESENT and LATE are both considered attendance.
+    Each attendance event represents participation within a session.
     """
+
     counter: Counter[str] = Counter()
 
-    for event in attendance_events:
-        if event.is_present or event.is_late:
-            counter[event.attendee] += 1
+    for attendance_event in attendance_events:
+        counter[attendance_event.attendee] += 1
 
-    return tuple(counter.most_common())
+    return tuple(
+        counter.most_common(),
+    )
 
 
-def rank_lateness(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[tuple[str, int], ...]:
-    """
-    Rank attendees by lateness count.
-    """
-    counter: Counter[str] = Counter()
-
-    for event in attendance_events:
-        if event.attendance_type is AttendanceType.LATE:
-            counter[event.attendee] += 1
-
-    return tuple(counter.most_common())
+# ============================================================================
+# Activity Rankings
+# ============================================================================
 
 
 def rank_activities(
     activity_events: Iterable[ActivityEvent],
 ) -> tuple[tuple[str, int], ...]:
     """
-    Rank message senders by activity count.
+    Rank members by activity frequency.
+
+    Each activity event contributes one activity participation
+    to the sender's total.
     """
+
     counter: Counter[str] = Counter()
 
-    for event in activity_events:
-        counter[event.sender] += 1
+    for activity_event in activity_events:
+        counter[activity_event.sender] += 1
 
-    return tuple(counter.most_common())
+    return tuple(
+        counter.most_common(),
+    )
+
+
+# ============================================================================
+# Combined Participation Rankings
+# ============================================================================
+
+
+def rank_total_participation(
+    attendance_events: Iterable[AttendanceEvent],
+    activity_events: Iterable[ActivityEvent],
+) -> tuple[tuple[str, int], ...]:
+    """
+    Rank members by total participation.
+
+    Total participation is the combined count of:
+
+    - Attendance participation events.
+    - Activity events.
+
+    This provides a broader participation ranking than
+    attendance or activity ranking alone.
+    """
+
+    counter: Counter[str] = Counter()
+
+    for attendance_event in attendance_events:
+        counter[attendance_event.attendee] += 1
+
+    for activity_event in activity_events:
+        counter[activity_event.sender] += 1
+
+    return tuple(
+        counter.most_common(),
+    )
+
+
+# ============================================================================
+# Ranking Utilities
+# ============================================================================
 
 
 def top_members(
@@ -100,12 +136,20 @@ def top_members(
     Parameters
     ----------
     rankings:
-        Ranking produced by one of the rank_* functions.
+        Ranking produced by a ranking function.
 
     limit:
         Maximum number of entries to return.
     """
-    return tuple(rankings)[: max(limit, 0)]
+
+    if limit < 0:
+        raise ValueError(
+            "limit cannot be negative.",
+        )
+
+    return tuple(
+        rankings,
+    )[:limit]
 
 
 def participant_rank(
@@ -117,14 +161,15 @@ def participant_rank(
 
     Ranking positions start at 1.
 
-    Returns
-    -------
-    int | None
-        Ranking position if found, otherwise None.
+    Matching is case-insensitive.
     """
+
     normalized = participant.casefold()
 
-    for position, (current, _) in enumerate(rankings, start=1):
+    for position, (current, _) in enumerate(
+        rankings,
+        start=1,
+    ):
         if current.casefold() == normalized:
             return position
 

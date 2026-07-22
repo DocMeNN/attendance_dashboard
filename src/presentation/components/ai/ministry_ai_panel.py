@@ -25,11 +25,12 @@ Architectural Rules
 
 from __future__ import annotations
 
+import traceback
+
 # ============================================================================
 # Standard Library Imports
 # ============================================================================
 from collections.abc import Callable
-import traceback
 from typing import Any
 
 # ============================================================================

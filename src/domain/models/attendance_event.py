@@ -3,178 +3,245 @@
 """
 Attendance Event Domain Model
 
-Purpose:
-    Represents a validated attendance event derived from a message.
+Purpose
+-------
+Represents one participation event within a session.
 
-Responsibilities:
-    - Represent a member attendance event.
-    - Validate attendance data.
-    - Provide attendance-related business behaviour.
-    - Remain technology independent.
+Domain Rule
+-----------
+Attendance is participation.
 
-Notes:
-    - Immutable.
-    - Derived from a Message.
-    - Timestamp is obtained from the source message.
-    - Contains no UI, pandas or infrastructure dependencies.
+Any recognized participation in a session produces
+a PRESENT AttendanceEvent.
 
-Author:
-    OYBS Attendance Dashboard
+There are no LATE, ABSENT, or UNKNOWN attendance
+classifications in this domain model.
 
-Created:
-    July 2026
+Responsibilities
+----------------
+- Represent a participant's participation event.
+- Validate attendance data.
+- Preserve the originating source message.
+- Provide attendance-related business behaviour.
+- Remain technology independent.
+
+Notes
+-----
+- Immutable.
+- Derived from a Message.
+- Timestamp is obtained from the source message.
+- Contains no UI, pandas or infrastructure dependencies.
 """
 
 from __future__ import annotations
 
+# ============================================================================
+# Standard Library Imports
+# ============================================================================
 from dataclasses import dataclass
 from datetime import date, datetime, time
 
-from src.domain.enums.attendance_type import AttendanceType
-
+# ============================================================================
+# Local Imports
+# ============================================================================
 from .message import Message
+
+# ============================================================================
+# Attendance Event
+# ============================================================================
 
 
 @dataclass(frozen=True, slots=True)
 class AttendanceEvent:
     """
-    Immutable attendance event.
+    Immutable participation event.
 
-    Attributes:
-        attendee:
-            Name of the attendee.
+    An AttendanceEvent represents one recognized instance
+    of participation by an attendee within a session.
 
-        attendance_type:
-            Type of attendance recorded.
+    Attendance is intentionally simple:
 
-        source_message:
-            Message that generated this attendance event.
+        Participation
+            ↓
+          PRESENT
+
+    The event does not represent absence, lateness, or
+    an unknown attendance state.
     """
 
     attendee: str
-    attendance_type: AttendanceType
     source_message: Message
 
     def __post_init__(self) -> None:
-        """Validate attendance event."""
+        """
+        Validate the attendance event.
+        """
 
         attendee = self.attendee.strip()
 
         if not attendee:
-            raise ValueError("attendee cannot be empty.")
+            raise ValueError(
+                "attendee cannot be empty.",
+            )
 
-        if not isinstance(self.attendance_type, AttendanceType):
-            raise TypeError("attendance_type must be an AttendanceType.")
+        if not isinstance(
+            self.source_message,
+            Message,
+        ):
+            raise TypeError(
+                "source_message must be a Message.",
+            )
 
-        if not isinstance(self.source_message, Message):
-            raise TypeError("source_message must be a Message.")
+        object.__setattr__(
+            self,
+            "attendee",
+            attendee,
+        )
 
-        object.__setattr__(self, "attendee", attendee)
-
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Derived Properties
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     @property
     def timestamp(self) -> datetime:
-        """Return attendance timestamp."""
+        """
+        Return the participation timestamp.
+        """
+
         return self.source_message.timestamp
 
     @property
     def event_date(self) -> date:
-        """Return attendance date."""
+        """
+        Return the participation date.
+        """
+
         return self.timestamp.date()
 
     @property
     def event_time(self) -> time:
-        """Return attendance time."""
+        """
+        Return the participation time.
+        """
+
         return self.timestamp.time()
 
     @property
     def line_number(self) -> int:
-        """Return source line number."""
+        """
+        Return the original source line number.
+        """
+
         return self.source_message.line_number
 
     @property
     def attendee_name(self) -> str:
-        """Return attendee name."""
+        """
+        Return the attendee name.
+        """
+
         return self.attendee
 
     @property
     def sender(self) -> str:
-        """Return sender from the source message."""
+        """
+        Return the sender from the source message.
+        """
+
         return self.source_message.sender
 
-    @property
-    def keyword(self) -> str:
-        """Return attendance keyword."""
-        return self.attendance_type.value
-
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Attendance Classification
-    # ------------------------------------------------------------------
-
-    @property
-    def is_done(self) -> bool:
-        return self.attendance_type is AttendanceType.DONE
+    # =========================================================================
 
     @property
     def is_present(self) -> bool:
-        return self.attendance_type is AttendanceType.PRESENT
+        """
+        Return True because this event represents participation.
+        """
 
-    @property
-    def is_late(self) -> bool:
-        return self.attendance_type is AttendanceType.LATE
+        return True
 
     @property
     def is_absent(self) -> bool:
-        return self.attendance_type is AttendanceType.ABSENT
+        """
+        Return False because absence is not represented by an
+        AttendanceEvent in the OYBS domain.
+        """
+
+        return False
 
     @property
-    def is_unknown(self) -> bool:
-        return self.attendance_type is AttendanceType.UNKNOWN
+    def is_late(self) -> bool:
+        """
+        Return False because lateness is not represented by an
+        AttendanceEvent in the OYBS domain.
+        """
 
-    # ------------------------------------------------------------------
+        return False
+
+    # =========================================================================
     # Comparison
-    # ------------------------------------------------------------------
+    # =========================================================================
 
-    def occurred_before(self, other: "AttendanceEvent") -> bool:
-        """Return True if this event occurred before another."""
+    def occurred_before(
+        self,
+        other: "AttendanceEvent",
+    ) -> bool:
+        """
+        Return True if this event occurred before another.
+        """
+
         return self.timestamp < other.timestamp
 
-    def occurred_after(self, other: "AttendanceEvent") -> bool:
-        """Return True if this event occurred after another."""
+    def occurred_after(
+        self,
+        other: "AttendanceEvent",
+    ) -> bool:
+        """
+        Return True if this event occurred after another.
+        """
+
         return self.timestamp > other.timestamp
 
-    def same_attendee(self, other: "AttendanceEvent") -> bool:
-        """Return True if both events belong to the same attendee."""
+    def same_attendee(
+        self,
+        other: "AttendanceEvent",
+    ) -> bool:
+        """
+        Return True if both events belong to the same attendee.
+        """
+
         return self.attendee.casefold() == other.attendee.casefold()
 
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Serialization
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     def to_dict(self) -> dict[str, object]:
-        """Return dictionary representation."""
+        """
+        Return dictionary representation.
+        """
 
         return {
             "attendee": self.attendee,
-            "attendance_type": self.attendance_type.value,
             "timestamp": self.timestamp,
             "sender": self.sender,
             "line_number": self.line_number,
         }
 
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Dunder Methods
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     def __str__(self) -> str:
-        """Return readable representation."""
+        """
+        Return readable representation.
+        """
 
         return (
-            f"AttendanceEvent("
+            "AttendanceEvent("
             f"attendee='{self.attendee}', "
-            f"type='{self.attendance_type.name}', "
+            f"type='PRESENT', "
             f"time='{self.timestamp}')"
         )

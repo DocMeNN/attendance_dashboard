@@ -3,36 +3,42 @@
 """
 Session Builder
 
-Purpose:
-    Builds immutable Session aggregates from validated Message objects.
+Purpose
+-------
+Builds immutable Session aggregates from validated Message objects.
 
-Responsibilities:
-    - Validate input messages.
-    - Determine the active meeting session.
-    - Construct AttendanceEvent objects.
-    - Construct DoneEvent objects.
-    - Construct ActivityEvent objects.
-    - Assemble immutable Session aggregates.
+Responsibilities
+----------------
+- Validate input messages.
+- Determine the active meeting session.
+- Construct AttendanceEvent objects.
+- Construct DoneEvent objects.
+- Construct ActivityEvent objects.
+- Assemble immutable Session aggregates.
 
-Rules:
-    - No pandas.
-    - No Streamlit.
-    - No analytics.
-    - No reporting.
-    - No infrastructure parsing.
-    - No file I/O.
-    - Technology independent.
+Rules
+-----
+- No pandas.
+- No Streamlit.
+- No analytics.
+- No reporting.
+- No infrastructure parsing.
+- No file I/O.
+- Technology independent.
 
-Notes:
-    - Operates exclusively on Domain models.
-    - Acts as an orchestration layer.
-    - Business rules remain inside the Domain layer.
+Notes
+-----
+- Operates exclusively on Domain models.
+- Acts as an orchestration layer.
+- Business rules remain inside the Domain layer.
 
-Author:
-    OYBS Attendance Dashboard
+Author
+------
+OYBS Attendance Dashboard
 
-Created:
-    July 2026
+Created
+-------
+July 2026
 """
 
 from __future__ import annotations
@@ -47,45 +53,47 @@ from datetime import date
 # Local Imports
 # ============================================================================
 from src.domain.constants.keywords import (
-    ACTIVITY_KEYWORDS,
     DONE_KEYWORDS,
     SESSION_START_KEYWORDS,
 )
 from src.domain.enums.activity_type import ActivityType
-from src.domain.enums.attendance_type import AttendanceType
 from src.domain.models.activity_event import ActivityEvent
 from src.domain.models.attendance_event import AttendanceEvent
 from src.domain.models.done_event import DoneEvent
 from src.domain.models.message import Message
 from src.domain.models.session import Session
+from src.domain.policies.activity_policy import (
+    classify_activity,
+    is_supported_activity,
+)
 
 
 class SessionBuilder:
     """
-       Builds immutable Session aggregates from validated messages.
+    Build immutable Session aggregates from validated messages.
 
-       Workflow
-       --------
+    Workflow
+    --------
 
-           Messages
-               │
-               ▼
-         Validate & Sort
-               │
-               ▼
-        Detect Session Start
-               │
-               ▼
-         Session Messages
-               │
-        ┌──────┼────────┐
-        ▼      ▼        ▼
-    Attendance Done  Activities
-        │      │        │
-        └──────┴────────┘
-               │
-               ▼
-            Session
+        Messages
+            │
+            ▼
+      Validate & Sort
+            │
+            ▼
+     Detect Session Start
+            │
+            ▼
+      Session Messages
+            │
+       ┌────┼────────┐
+       ▼    ▼        ▼
+    Attendance Done Activities
+       │    │        │
+       └────┴────────┘
+            │
+            ▼
+         Session
     """
 
     # ------------------------------------------------------------------
@@ -99,22 +107,11 @@ class SessionBuilder:
     ) -> Session:
         """
         Build a Session aggregate.
-
-        Parameters
-        ----------
-        session_date:
-            Date of the meeting session.
-
-        messages:
-            Validated domain messages.
-
-        Returns
-        -------
-        Session
-            Immutable Session aggregate.
         """
 
-        ordered_messages = self._validate_messages(messages)
+        ordered_messages = self._validate_messages(
+            messages,
+        )
 
         session_messages = self._session_messages(
             ordered_messages,
@@ -150,18 +147,21 @@ class SessionBuilder:
         """
         Build AttendanceEvent objects.
 
-        Business Rules
-        --------------
-        - Every interaction counts as attendance.
-        - Every Done message also counts as attendance.
+        Every valid participant message represents participation.
         """
 
         attendance_events: list[AttendanceEvent] = []
 
         for message in messages:
-            attendance_events.append(self._attendance_event(message))
+            attendance_events.append(
+                self._attendance_event(
+                    message,
+                )
+            )
 
-        return tuple(attendance_events)
+        return tuple(
+            attendance_events,
+        )
 
     # ------------------------------------------------------------------
     # Done Construction
@@ -174,20 +174,27 @@ class SessionBuilder:
         """
         Build DoneEvent objects.
 
-        Duplicate removal is intentionally deferred to
-        the Domain analytics layer.
+        Multiple Done messages are preserved.
         """
 
         done_events: list[DoneEvent] = []
 
         for message in messages:
 
-            if not self._is_done_message(message):
+            if not self._is_done_message(
+                message,
+            ):
                 continue
 
-            done_events.append(self._done_event(message))
+            done_events.append(
+                self._done_event(
+                    message,
+                )
+            )
 
-        return tuple(done_events)
+        return tuple(
+            done_events,
+        )
 
     # ------------------------------------------------------------------
     # Activity Construction
@@ -200,15 +207,26 @@ class SessionBuilder:
         """
         Build ActivityEvent objects from session messages.
 
-        Messages that do not represent configured meeting
-        activities are ignored.
+        Every supported message is classified according to
+        the domain Activity Policy.
         """
 
         activity_events: list[ActivityEvent] = []
 
+        prayer_session_active = False
+
         for message in messages:
 
-            activity_type = self._activity_type(message)
+            if not is_supported_activity(
+                message.content,
+                prayer_session_active=prayer_session_active,
+            ):
+                continue
+
+            activity_type = self._activity_type(
+                message,
+                prayer_session_active=prayer_session_active,
+            )
 
             if activity_type is None:
                 continue
@@ -220,7 +238,19 @@ class SessionBuilder:
                 )
             )
 
-        return tuple(activity_events)
+            if self._is_prayer_session_opening(
+                message,
+            ):
+                prayer_session_active = True
+
+            elif self._is_prayer_session_closing(
+                message,
+            ):
+                prayer_session_active = False
+
+        return tuple(
+            activity_events,
+        )
 
     # ------------------------------------------------------------------
     # Activity Classification
@@ -229,90 +259,86 @@ class SessionBuilder:
     def _activity_type(
         self,
         message: Message,
+        *,
+        prayer_session_active: bool = False,
     ) -> ActivityType | None:
         """
         Determine the ActivityType represented by a message.
 
-        Returns
-        -------
-        ActivityType | None
-            Matching activity type or None if the message
-            is not recognised as a meeting activity.
+        The domain Activity Policy is the authoritative source
+        for activity classification.
         """
 
-        if self._matches_keywords(
-            message,
-            ACTIVITY_KEYWORDS["opening_prayer"],
-        ):
-            return ActivityType.OPENING_PRAYER
+        activity_name = classify_activity(
+            message.content,
+            prayer_session_active=prayer_session_active,
+        )
 
-        if self._matches_keywords(
-            message,
-            ACTIVITY_KEYWORDS["scripture_reading"],
-        ):
-            return ActivityType.SCRIPTURE_READING
+        activity_mapping: dict[str, ActivityType] = {
+            "Scripture Reading": ActivityType.SCRIPTURE_READING,
+            "Insight": ActivityType.INSIGHT,
+            "Discussion": ActivityType.DISCUSSION,
+            "Announcement": ActivityType.ANNOUNCEMENT,
+            "Done": ActivityType.DONE,
+            "Prayer Session": ActivityType.PRAYER_SESSION,
+        }
 
-        if self._matches_keywords(
-            message,
-            ACTIVITY_KEYWORDS["worship"],
-        ):
-            return ActivityType.WORSHIP
+        return activity_mapping.get(
+            activity_name,
+        )
 
-        if self._matches_keywords(
-            message,
-            ACTIVITY_KEYWORDS["announcement"],
-        ):
-            return ActivityType.ANNOUNCEMENT
+    # ------------------------------------------------------------------
+    # Prayer Session Boundaries
+    # ------------------------------------------------------------------
 
-        if self._matches_keywords(
-            message,
-            ACTIVITY_KEYWORDS["message"],
-        ):
-            return ActivityType.MESSAGE
+    def _is_prayer_session_opening(
+        self,
+        message: Message,
+    ) -> bool:
+        """
+        Return True if the message opens a prayer session.
+        """
 
-        if self._matches_keywords(
-            message,
-            ACTIVITY_KEYWORDS["offering"],
-        ):
-            return ActivityType.OFFERING
+        normalized = message.content.strip().casefold()
 
-        if self._matches_keywords(
-            message,
-            ACTIVITY_KEYWORDS["closing_prayer"],
-        ):
-            return ActivityType.CLOSING_PRAYER
+        return normalized.startswith(
+            "opening prayer",
+        ) or normalized.startswith(
+            "prayer session opens",
+        )
 
-        return None
+    def _is_prayer_session_closing(
+        self,
+        message: Message,
+    ) -> bool:
+        """
+        Return True if the message closes a prayer session.
+        """
+
+        normalized = message.content.strip().casefold()
+
+        return (
+            normalized.startswith(
+                "closing prayer",
+            )
+            or normalized.startswith(
+                "closing prayers",
+            )
+            or normalized.startswith(
+                "prayer session closes",
+            )
+        )
 
     # ------------------------------------------------------------------
     # Keyword Helpers
     # ------------------------------------------------------------------
-
-    def _matches_keywords(
-        self,
-        message: Message,
-        keywords: frozenset[str],
-    ) -> bool:
-        """
-        Return True if the supplied message contains at
-        least one configured keyword.
-        """
-
-        return any(message.contains(keyword) for keyword in keywords)
 
     def _is_done_message(
         self,
         message: Message,
     ) -> bool:
         """
-        Return True if the message is a standalone
-        attendance acknowledgement.
-
-        Examples
-        --------
-        Done
-        done
-        DONE
+        Return True if the message is a Done acknowledgement.
         """
 
         return message.is_single_word and message.lowercase_content in DONE_KEYWORDS
@@ -323,15 +349,14 @@ class SessionBuilder:
     ) -> bool:
         """
         Return True if the message marks the beginning
-        of a meeting session.
-
-        Session start detection is entirely driven by
-        SESSION_START_KEYWORDS.
+        of a study session.
         """
 
-        return self._matches_keywords(
-            message,
-            SESSION_START_KEYWORDS,
+        return any(
+            message.contains(
+                keyword,
+            )
+            for keyword in SESSION_START_KEYWORDS
         )
 
     # ------------------------------------------------------------------
@@ -343,30 +368,22 @@ class SessionBuilder:
         messages: Iterable[Message],
     ) -> tuple[Message, ...]:
         """
-        Validate, normalize and sort the supplied messages.
-
-        Parameters
-        ----------
-        messages:
-            Iterable of domain Message objects.
-
-        Returns
-        -------
-        tuple[Message, ...]
-            Chronologically ordered messages.
-
-        Raises
-        ------
-        TypeError
-            If any object is not a Message.
+        Validate and chronologically sort supplied messages.
         """
 
-        validated = tuple(messages)
+        validated = tuple(
+            messages,
+        )
 
         for message in validated:
 
-            if not isinstance(message, Message):
-                raise TypeError("messages must contain only Message instances.")
+            if not isinstance(
+                message,
+                Message,
+            ):
+                raise TypeError(
+                    "messages must contain only Message instances.",
+                )
 
         return tuple(
             sorted(
@@ -384,14 +401,10 @@ class SessionBuilder:
         messages: tuple[Message, ...],
     ) -> tuple[Message, ...]:
         """
-        Extract the messages belonging to a meeting session.
+        Extract messages belonging to the study session.
 
-        Business Rule
-        -------------
-        The session begins immediately after the first
-        configured Scripture Reading message.
-
-        Messages before the session start marker are ignored.
+        Messages before the first configured session-start
+        marker are ignored.
         """
 
         session_started = False
@@ -401,14 +414,20 @@ class SessionBuilder:
 
             if not session_started:
 
-                if self._is_session_start(message):
+                if self._is_session_start(
+                    message,
+                ):
                     session_started = True
 
                 continue
 
-            session_messages.append(message)
+            session_messages.append(
+                message,
+            )
 
-        return tuple(session_messages)
+        return tuple(
+            session_messages,
+        )
 
     # ------------------------------------------------------------------
     # Event Factories
@@ -424,7 +443,6 @@ class SessionBuilder:
 
         return AttendanceEvent(
             attendee=message.sender,
-            attendance_type=AttendanceType.PRESENT,
             source_message=message,
         )
 
@@ -434,13 +452,6 @@ class SessionBuilder:
     ) -> DoneEvent:
         """
         Create a DoneEvent from a Message.
-
-        Multiple Done messages are preserved.
-
-        Duplicate elimination is intentionally deferred to the
-        Domain analytics layer where the business rule is:
-
-            same attendee + same timestamp
         """
 
         return DoneEvent(
@@ -472,11 +483,11 @@ class SessionBuilder:
     ) -> tuple[AttendanceEvent, ...]:
         """
         Build attendance events only.
-
-        Primarily intended for unit testing and diagnostics.
         """
 
-        ordered_messages = self._validate_messages(messages)
+        ordered_messages = self._validate_messages(
+            messages,
+        )
 
         session_messages = self._session_messages(
             ordered_messages,
@@ -492,11 +503,11 @@ class SessionBuilder:
     ) -> tuple[DoneEvent, ...]:
         """
         Build Done events only.
-
-        Primarily intended for unit testing and diagnostics.
         """
 
-        ordered_messages = self._validate_messages(messages)
+        ordered_messages = self._validate_messages(
+            messages,
+        )
 
         session_messages = self._session_messages(
             ordered_messages,
@@ -512,11 +523,11 @@ class SessionBuilder:
     ) -> tuple[ActivityEvent, ...]:
         """
         Build activity events only.
-
-        Primarily intended for unit testing and diagnostics.
         """
 
-        ordered_messages = self._validate_messages(messages)
+        ordered_messages = self._validate_messages(
+            messages,
+        )
 
         session_messages = self._session_messages(
             ordered_messages,

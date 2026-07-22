@@ -25,8 +25,9 @@ Rules:
 Notes:
     - Business rules remain inside the Domain layer.
     - This service coordinates Domain components only.
-    - Attendance is based on WhatsApp participants only.
-    - Missing members cannot be calculated because no member registry exists.
+    - Attendance is based on participation.
+    - Missing members cannot be calculated because no member registry
+      exists for the attendance population.
 
 Author:
     OYBS Attendance Dashboard
@@ -40,7 +41,6 @@ from __future__ import annotations
 # ============================================================================
 # Standard Library Imports
 # ============================================================================
-from collections import Counter
 from collections.abc import Iterable
 from datetime import date
 
@@ -48,16 +48,7 @@ from datetime import date
 # Local Imports
 # ============================================================================
 from src.application.builders.session_builder import SessionBuilder
-from src.domain.analytics.attendance import (
-    calculate_attendance_rate,
-    calculate_member_attendance_rate,
-    count_attendance_types,
-    get_attendees,
-)
-from src.domain.analytics.done import (
-    count_done_events,
-    first_done_event,
-)
+from src.domain.analytics.done import count_done_events
 from src.domain.enums.attendance_type import AttendanceType
 from src.domain.models.attendance_event import AttendanceEvent
 from src.domain.models.done_event import DoneEvent
@@ -70,8 +61,9 @@ class AttendanceService:
     """
     Application service for attendance workflows.
 
-    Coordinates Session creation and delegates all
-    attendance calculations to Domain analytics.
+    Coordinates Session creation and delegates
+    attendance-related behaviour to Domain models
+    and Domain analytics.
     """
 
     def __init__(
@@ -123,12 +115,12 @@ class AttendanceService:
         session: Session,
     ) -> tuple[str, ...]:
         """
-        Return unique WhatsApp participants who attended.
+        Return unique participating attendees.
+
+        Session-level attendance is participation-based.
         """
 
-        return get_attendees(
-            session.attendance_events,
-        )
+        return session.unique_attendees
 
     def attendance_count(
         self,
@@ -139,7 +131,9 @@ class AttendanceService:
         """
 
         return len(
-            self.attendees(session),
+            self.attendees(
+                session,
+            )
         )
 
     def attendance_rate(
@@ -148,18 +142,34 @@ class AttendanceService:
         expected_attendees: int,
     ) -> float:
         """
-        Calculate attendance percentage.
+        Calculate attendance percentage against an
+        externally supplied expected participant count.
 
-        Note:
-            Expected attendees must come from an external
-            known participant count. WhatsApp export alone
-            cannot determine silent members.
+        Attendance rate is calculated as:
+
+            observed participants
+            ---------------------
+            expected participants
+
+        The expected participant count must come from
+        an external known population because a WhatsApp
+        export cannot identify silent members.
         """
 
-        return calculate_attendance_rate(
-            session.attendance_events,
-            expected_attendees,
-        )
+        if expected_attendees < 0:
+            raise ValueError(
+                "expected_attendees cannot be negative.",
+            )
+
+        if expected_attendees == 0:
+            return 0.0
+
+        return (
+            self.attendance_count(
+                session,
+            )
+            / expected_attendees
+        ) * 100.0
 
     def member_attendance_rate(
         self,
@@ -167,25 +177,52 @@ class AttendanceService:
         session: Session,
     ) -> float:
         """
-        Calculate attendance rate for a known participant.
+        Calculate whether a known member participated
+        in the supplied session.
+
+        This service method provides a session-level
+        participation result for a known member.
+
+        The result is:
+
+            100.0
+                Member participated.
+
+            0.0
+                Member did not participate.
         """
 
-        return calculate_member_attendance_rate(
-            member,
-            session.attendance_events,
-        )
+        member_name = member.name.casefold()
+
+        for attendee in self.attendees(
+            session,
+        ):
+            if attendee.casefold() == member_name:
+                return 100.0
+
+        return 0.0
 
     def attendance_counts(
         self,
         session: Session,
-    ) -> Counter[AttendanceType]:
+    ) -> dict[AttendanceType, int]:
         """
         Count attendance classifications.
+
+        The current attendance domain contains only
+        PRESENT participation events.
         """
 
-        return count_attendance_types(
-            session.attendance_events,
+        present_count = self.attendance_count(
+            session,
         )
+
+        if present_count == 0:
+            return {}
+
+        return {
+            AttendanceType.PRESENT: present_count,
+        }
 
     # ------------------------------------------------------------------
     # Done Events
@@ -218,12 +255,16 @@ class AttendanceService:
         session: Session,
     ) -> DoneEvent | None:
         """
-        Return first Done acknowledgement event.
+        Return the first Done acknowledgement event.
+
+        Done events are already chronologically ordered
+        by the Session aggregate.
         """
 
-        return first_done_event(
-            session.done_events,
-        )
+        if not session.done_events:
+            return None
+
+        return session.done_events[0]
 
     # ------------------------------------------------------------------
     # Participant Information
@@ -234,7 +275,7 @@ class AttendanceService:
         session: Session,
     ) -> int:
         """
-        Return number of unique WhatsApp participants.
+        Return number of unique observed participants.
 
         This represents observed participants only.
         No missing-member calculation is performed.
@@ -249,7 +290,7 @@ class AttendanceService:
         session: Session,
     ) -> tuple[str, ...]:
         """
-        Return observed WhatsApp participants.
+        Return observed participants.
         """
 
         return session.unique_attendees
@@ -309,7 +350,7 @@ class AttendanceService:
         Return official representation.
         """
 
-        return f"{self.__class__.__name__}" f"(builder={self.builder.name})"
+        return f"{self.__class__.__name__}(builder={self.builder.name})"
 
     def __str__(self) -> str:
         """

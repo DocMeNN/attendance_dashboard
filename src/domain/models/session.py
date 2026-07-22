@@ -5,15 +5,31 @@ Session Domain Model
 
 Purpose
 -------
-Represents a complete meeting session.
+Represents a detected meeting/session boundary and the events
+associated with that time period.
 
 Responsibilities
 ----------------
-- Aggregate attendance events.
-- Aggregate Done acknowledgement events.
-- Aggregate activity events.
-- Provide session-level business behaviour.
+- Aggregate attendance events detected within the session.
+- Aggregate Scripture Reading acknowledgement events detected
+  within the session.
+- Aggregate activity events detected within the session.
+- Provide session-level event counts and timeline behaviour.
 - Remain technology independent.
+
+Important Domain Rules
+----------------------
+- A session is a temporal aggregation boundary.
+- Attendance is session-related.
+- Activities are session-related.
+- A DoneEvent is a Scripture Reading acknowledgement.
+- DoneEvents are counted individually.
+- Multiple DoneEvents may exist within one session.
+- Multiple DoneEvents may belong to the same attendee.
+- DoneEvent count is NOT a unique-member count.
+- DoneEvent semantics remain independent of session identity.
+- Weekly/monthly Done totals are calculated by counting
+  DoneEvents within the reporting period.
 
 Rules
 -----
@@ -47,7 +63,14 @@ from .done_event import DoneEvent
 @dataclass(frozen=True, slots=True)
 class Session:
     """
-    Immutable meeting session aggregate.
+    Immutable temporal session aggregate.
+
+    A Session represents a detected time boundary within which
+    related events are grouped for session-level analysis.
+
+    DoneEvents are included in the aggregate because their
+    timestamps fall within the session boundary. Their meaning,
+    however, remains independent of the session itself.
     """
 
     session_date: date
@@ -110,41 +133,49 @@ class Session:
             ),
         )
 
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Event Counts
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     @property
     def attendance_count(self) -> int:
         """
-        Return attendance event count.
+        Return the number of attendance events.
         """
         return len(self.attendance_events)
 
     @property
     def done_count(self) -> int:
         """
-        Return Done acknowledgement count.
+        Return the number of Scripture Reading acknowledgements.
+
+        Important
+        ---------
+        This is an event count, not a unique-member count.
+
+        Therefore, if the same attendee submits two valid Done
+        acknowledgements within the session boundary, both events
+        are counted.
         """
         return len(self.done_events)
 
     @property
     def activity_count(self) -> int:
         """
-        Return activity event count.
+        Return the number of activity events.
         """
         return len(self.activity_events)
 
     @property
     def total_events(self) -> int:
         """
-        Return total event count.
+        Return the total number of aggregated events.
         """
         return self.attendance_count + self.done_count + self.activity_count
 
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Attendance
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     @property
     def attendees(self) -> tuple[str, ...]:
@@ -156,7 +187,7 @@ class Session:
     @property
     def unique_attendees(self) -> tuple[str, ...]:
         """
-        Return unique attendees preserving order.
+        Return unique attendees while preserving first appearance order.
         """
 
         seen: set[str] = set()
@@ -174,16 +205,17 @@ class Session:
     @property
     def present_attendees(self) -> tuple[str, ...]:
         """
-        Return attendees marked as present.
+        Return attendees classified as present.
 
-        Attendance is derived solely from participants
-        found in the exported WhatsApp chat.
+        Attendance is derived from participants found in the
+        exported WhatsApp conversation.
         """
 
         seen: set[str] = set()
         attendees: list[str] = []
 
         for event in self.attendance_events:
+
             if event.is_absent:
                 continue
 
@@ -198,33 +230,32 @@ class Session:
     @property
     def attendee_count(self) -> int:
         """
-        Return unique attendee count.
+        Return the number of unique attendees.
         """
         return len(self.unique_attendees)
 
     @property
     def present_count(self) -> int:
         """
-        Return number of participants present.
+        Return the number of unique participants present.
         """
         return len(self.present_attendees)
 
     @property
     def late_count(self) -> int:
         """
-        Return number of late participants.
+        Return the number of late attendance events.
         """
         return sum(event.is_late for event in self.attendance_events)
 
     @property
     def absent_count(self) -> int:
         """
-        Return number of explicit absent events.
+        Return the number of explicitly absent attendance events.
 
-        WhatsApp exports do not contain a complete
-        membership register, so this counts only
-        attendance events explicitly classified as
-        ABSENT.
+        WhatsApp exports do not contain a complete membership
+        register. Therefore, this counts only attendance events
+        explicitly classified as ABSENT.
         """
         return sum(event.is_absent for event in self.attendance_events)
 
@@ -237,13 +268,12 @@ class Session:
             "present": self.present_count,
             "late": self.late_count,
             "absent": self.absent_count,
-            "done": self.done_count,
         }
 
     @property
     def first_attendance(self) -> AttendanceEvent | None:
         """
-        Return first attendance event.
+        Return the first attendance event.
         """
 
         if not self.attendance_events:
@@ -254,7 +284,7 @@ class Session:
     @property
     def last_attendance(self) -> AttendanceEvent | None:
         """
-        Return last attendance event.
+        Return the last attendance event.
         """
 
         if not self.attendance_events:
@@ -265,7 +295,7 @@ class Session:
     @property
     def first_attendee(self) -> str | None:
         """
-        Return first attendee.
+        Return the first attendee.
         """
 
         event = self.first_attendance
@@ -275,14 +305,14 @@ class Session:
 
         return event.attendee
 
-    # ------------------------------------------------------------------
-    # Done Acknowledgements
-    # ------------------------------------------------------------------
+    # =========================================================================
+    # Scripture Reading Acknowledgements
+    # =========================================================================
 
     @property
     def first_done(self) -> DoneEvent | None:
         """
-        Return first Done acknowledgement.
+        Return the first Scripture Reading acknowledgement.
         """
 
         if not self.done_events:
@@ -293,7 +323,7 @@ class Session:
     @property
     def last_done(self) -> DoneEvent | None:
         """
-        Return last Done acknowledgement.
+        Return the last Scripture Reading acknowledgement.
         """
 
         if not self.done_events:
@@ -304,18 +334,76 @@ class Session:
     @property
     def has_done(self) -> bool:
         """
-        Return True if Done acknowledgements exist.
+        Return True if at least one DoneEvent exists.
         """
         return bool(self.done_events)
 
-    # ------------------------------------------------------------------
+    @property
+    def done_attendees(self) -> tuple[str, ...]:
+        """
+        Return attendees associated with DoneEvents.
+
+        Duplicates are preserved.
+
+        Example
+        -------
+        If:
+
+            Ada   -> Done
+            Ada   -> Done
+            John  -> Done
+
+        the result is:
+
+            ("Ada", "Ada", "John")
+
+        This preserves the fact that three acknowledgement
+        events occurred.
+        """
+        return tuple(event.attendee for event in self.done_events)
+
+    @property
+    def unique_done_attendees(self) -> tuple[str, ...]:
+        """
+        Return unique attendees who submitted DoneEvents.
+
+        This is intentionally separate from done_count.
+
+        done_count:
+            Number of acknowledgement events.
+
+        unique_done_attendees:
+            Number of distinct attendees associated with those events.
+        """
+
+        seen: set[str] = set()
+        attendees: list[str] = []
+
+        for event in self.done_events:
+
+            key = event.attendee.casefold()
+
+            if key not in seen:
+                seen.add(key)
+                attendees.append(event.attendee)
+
+        return tuple(attendees)
+
+    @property
+    def unique_done_attendee_count(self) -> int:
+        """
+        Return the number of unique attendees who submitted DoneEvents.
+        """
+        return len(self.unique_done_attendees)
+
+    # =========================================================================
     # Activities
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     @property
     def first_activity(self) -> ActivityEvent | None:
         """
-        Return first activity event.
+        Return the first activity event.
         """
 
         if not self.activity_events:
@@ -326,7 +414,7 @@ class Session:
     @property
     def last_activity(self) -> ActivityEvent | None:
         """
-        Return last activity event.
+        Return the last activity event.
         """
 
         if not self.activity_events:
@@ -334,9 +422,9 @@ class Session:
 
         return self.activity_events[-1]
 
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Timeline
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     @property
     def all_events(
@@ -365,7 +453,7 @@ class Session:
     @property
     def start_time(self) -> datetime | None:
         """
-        Return first event timestamp.
+        Return the timestamp of the first event.
         """
 
         if not self.all_events:
@@ -376,7 +464,7 @@ class Session:
     @property
     def end_time(self) -> datetime | None:
         """
-        Return last event timestamp.
+        Return the timestamp of the last event.
         """
 
         if not self.all_events:
@@ -387,7 +475,7 @@ class Session:
     @property
     def duration(self) -> timedelta:
         """
-        Return session duration.
+        Return the duration between the first and last events.
         """
 
         if self.start_time is None or self.end_time is None:
@@ -395,9 +483,9 @@ class Session:
 
         return self.end_time - self.start_time
 
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Status
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     @property
     def has_attendance(self) -> bool:
@@ -409,7 +497,7 @@ class Session:
     @property
     def has_done_events(self) -> bool:
         """
-        Return True if Done acknowledgement events exist.
+        Return True if Scripture Reading acknowledgement events exist.
         """
         return bool(self.done_events)
 
@@ -427,9 +515,9 @@ class Session:
         """
         return self.total_events == 0
 
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Lookup
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     def attendee_exists(
         self,
@@ -451,8 +539,7 @@ class Session:
         attendee: str,
     ) -> bool:
         """
-        Return True if the attendee has at least one
-        Done acknowledgement.
+        Return True if an attendee has submitted at least one DoneEvent.
         """
 
         normalized = attendee.casefold()
@@ -461,13 +548,30 @@ class Session:
             event.attendee.casefold() == normalized for event in self.done_events
         )
 
-    # ------------------------------------------------------------------
+    def done_count_for(
+        self,
+        attendee: str,
+    ) -> int:
+        """
+        Return the number of DoneEvents submitted by an attendee.
+
+        This method deliberately counts events rather than unique
+        attendees.
+        """
+
+        normalized = attendee.casefold()
+
+        return sum(
+            event.attendee.casefold() == normalized for event in self.done_events
+        )
+
+    # =========================================================================
     # Serialization
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     def to_dict(self) -> dict[str, object]:
         """
-        Return dictionary representation.
+        Return a dictionary representation.
         """
 
         return {
@@ -477,6 +581,7 @@ class Session:
             "late_count": self.late_count,
             "absent_count": self.absent_count,
             "done_count": self.done_count,
+            "unique_done_attendee_count": (self.unique_done_attendee_count),
             "activity_count": self.activity_count,
             "attendee_count": self.attendee_count,
             "attendance_types": self.attendance_types,
@@ -486,13 +591,13 @@ class Session:
             "duration": str(self.duration),
         }
 
-    # ------------------------------------------------------------------
+    # =========================================================================
     # Dunder Methods
-    # ------------------------------------------------------------------
+    # =========================================================================
 
     def __len__(self) -> int:
         """
-        Return total number of events.
+        Return total number of aggregated events.
         """
         return self.total_events
 
@@ -512,6 +617,6 @@ class Session:
             f"date={self.session_date}, "
             f"participants={self.attendee_count}, "
             f"present={self.present_count}, "
-            f"done={self.done_count}, "
+            f"done_events={self.done_count}, "
             f"activities={self.activity_count})"
         )

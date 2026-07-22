@@ -5,29 +5,44 @@ Domain Attendance Analytics
 
 Purpose
 -------
-Provides pure business logic for attendance-related calculations.
+Provides pure business logic for attendance and participation analytics.
+
+Domain Rule
+-----------
+Attendance is participation of any kind within a session.
+
+Therefore:
+- Any attendance event represents participation.
+- Attendance is counted as Present.
+- There is no Late classification.
+- There is no Absent classification at session participation level.
+- Done acknowledgements are analysed separately.
+- Activity events are analysed separately.
+- Attendance is based on unique participants.
 
 Responsibilities
 ----------------
-- Filter attendance events.
-- Calculate attendance statistics.
-- Count attendance classifications.
-- Provide chronological attendance analytics.
-- Remain technology independent.
+- Retrieve attendance events.
+- Determine unique participants.
+- Count participation.
+- Identify first and last participants.
+- Determine whether a participant participated.
+- Provide attendance summaries.
 
 Rules
 -----
 - No pandas.
 - No Streamlit.
-- No file I/O.
-- No database access.
+- No plotting.
+- No reporting.
 - No infrastructure dependencies.
+- No UI dependencies.
 
 Notes
 -----
-- Operates only on immutable Domain models.
-- Does not construct AttendanceSummary objects.
-- AttendanceSummary is derived from a Session model.
+- Operates only on immutable domain models.
+- Contains pure domain business logic.
+- Attendance means participation within a session.
 """
 
 from __future__ import annotations
@@ -35,126 +50,23 @@ from __future__ import annotations
 # ============================================================================
 # Standard Library Imports
 # ============================================================================
-from collections import Counter
-from typing import Iterable
+from collections.abc import Iterable
 
 # ============================================================================
 # Local Imports
 # ============================================================================
-from src.domain.enums.attendance_type import AttendanceType
 from src.domain.models.attendance_event import AttendanceEvent
-from src.domain.models.member import Member
 
 # ============================================================================
-# Attendance Event Filters
+# Retrieval
 # ============================================================================
 
 
-def get_present_events(
+def get_attendance_events(
     attendance_events: Iterable[AttendanceEvent],
 ) -> tuple[AttendanceEvent, ...]:
     """
-    Return attendance events marked as present.
-    """
-
-    return tuple(event for event in attendance_events if event.is_present)
-
-
-def get_late_events(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[AttendanceEvent, ...]:
-    """
-    Return attendance events marked as late.
-    """
-
-    return tuple(event for event in attendance_events if event.is_late)
-
-
-def get_absent_events(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[AttendanceEvent, ...]:
-    """
-    Return attendance events marked as absent.
-    """
-
-    return tuple(event for event in attendance_events if event.is_absent)
-
-
-# ============================================================================
-# Attendees
-# ============================================================================
-
-
-def get_attendees(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[str, ...]:
-    """
-    Return unique attendee names preserving
-    chronological order.
-    """
-
-    seen: set[str] = set()
-    attendees: list[str] = []
-
-    for event in attendance_events:
-
-        if event.is_absent:
-            continue
-
-        key = event.attendee.casefold()
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-        attendees.append(event.attendee)
-
-    return tuple(attendees)
-
-
-def get_unique_attendees(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[str, ...]:
-    """
-    Return unique attendees.
-
-    Alias for get_attendees() to provide a clearer
-    analytics-oriented API.
-    """
-
-    return get_attendees(
-        attendance_events,
-    )
-
-
-def count_unique_attendees(
-    attendance_events: Iterable[AttendanceEvent],
-) -> int:
-    """
-    Return the number of unique attendees.
-    """
-
-    return len(
-        get_attendees(
-            attendance_events,
-        )
-    )
-
-
-# ============================================================================
-# Chronological Analytics
-# ============================================================================
-
-
-def get_attendance_timeline(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[AttendanceEvent, ...]:
-    """
-    Return attendance events ordered
-    chronologically.
-
-    Events are sorted using the original
-    WhatsApp message timestamp.
+    Return attendance events ordered chronologically.
     """
 
     return tuple(
@@ -165,81 +77,54 @@ def get_attendance_timeline(
     )
 
 
-def get_first_arrivals(
-    attendance_events: Iterable[AttendanceEvent],
-) -> tuple[AttendanceEvent, ...]:
-    """
-    Return attendees ordered from
-    earliest arrival to latest arrival.
-
-    Duplicate attendee records are removed,
-    preserving the first occurrence only.
-    """
-
-    timeline = get_attendance_timeline(
-        attendance_events,
-    )
-
-    seen: set[str] = set()
-
-    arrivals: list[AttendanceEvent] = []
-
-    for event in timeline:
-
-        if event.is_absent:
-            continue
-
-        key = event.attendee.casefold()
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-        arrivals.append(event)
-
-    return tuple(arrivals)
-
-
 # ============================================================================
-# Reverse Chronological Analytics
+# Participant Retrieval
 # ============================================================================
 
 
-def get_latest_arrivals(
+def get_participants(
     attendance_events: Iterable[AttendanceEvent],
-) -> tuple[AttendanceEvent, ...]:
+) -> tuple[str, ...]:
     """
-    Return attendees ordered from
-    latest arrival to earliest arrival.
+    Return unique participants in chronological order of first participation.
 
-    Duplicate attendee records are removed,
-    preserving the latest occurrence only.
+    Attendance is participation of any kind within a session.
     """
-
-    timeline = reversed(
-        get_attendance_timeline(
-            attendance_events,
-        )
-    )
 
     seen: set[str] = set()
+    participants: list[str] = []
 
-    arrivals: list[AttendanceEvent] = []
+    for event in get_attendance_events(attendance_events):
+        normalized = event.attendee.casefold()
 
-    for event in timeline:
-
-        if event.is_absent:
+        if normalized in seen:
             continue
 
-        key = event.attendee.casefold()
+        seen.add(normalized)
+        participants.append(event.attendee)
 
-        if key in seen:
-            continue
+    return tuple(participants)
 
-        seen.add(key)
-        arrivals.append(event)
 
-    return tuple(arrivals)
+def participant_exists(
+    attendance_events: Iterable[AttendanceEvent],
+    attendee: str,
+) -> bool:
+    """
+    Return True if the attendee participated.
+    """
+
+    normalized = attendee.casefold()
+
+    return any(
+        participant.casefold() == normalized
+        for participant in get_participants(attendance_events)
+    )
+
+
+# ============================================================================
+# Counts
+# ============================================================================
 
 
 def count_attendance_events(
@@ -247,74 +132,196 @@ def count_attendance_events(
 ) -> int:
     """
     Return the total number of attendance events.
+
+    This represents the number of recorded participation events.
     """
 
-    return sum(1 for _ in attendance_events)
+    return len(
+        get_attendance_events(
+            attendance_events,
+        )
+    )
+
+
+def count_participants(
+    attendance_events: Iterable[AttendanceEvent],
+) -> int:
+    """
+    Return the number of unique participants.
+    """
+
+    return len(
+        get_participants(
+            attendance_events,
+        )
+    )
 
 
 # ============================================================================
-# Attendance Statistics
+# Timeline
 # ============================================================================
 
 
-def calculate_attendance_rate(
+def first_attendance_event(
+    attendance_events: Iterable[AttendanceEvent],
+) -> AttendanceEvent | None:
+    """
+    Return the first participation event.
+    """
+
+    events = get_attendance_events(
+        attendance_events,
+    )
+
+    if not events:
+        return None
+
+    return events[0]
+
+
+def last_attendance_event(
+    attendance_events: Iterable[AttendanceEvent],
+) -> AttendanceEvent | None:
+    """
+    Return the last participation event.
+    """
+
+    events = get_attendance_events(
+        attendance_events,
+    )
+
+    if not events:
+        return None
+
+    return events[-1]
+
+
+def first_participant(
+    attendance_events: Iterable[AttendanceEvent],
+) -> str | None:
+    """
+    Return the first participant.
+    """
+
+    event = first_attendance_event(
+        attendance_events,
+    )
+
+    if event is None:
+        return None
+
+    return event.attendee
+
+
+def last_participant(
+    attendance_events: Iterable[AttendanceEvent],
+) -> str | None:
+    """
+    Return the last participant.
+    """
+
+    event = last_attendance_event(
+        attendance_events,
+    )
+
+    if event is None:
+        return None
+
+    return event.attendee
+
+
+# ============================================================================
+# Attendance Status
+# ============================================================================
+
+
+def has_attendance(
+    attendance_events: Iterable[AttendanceEvent],
+) -> bool:
+    """
+    Return True if at least one participation event exists.
+    """
+
+    return (
+        count_participants(
+            attendance_events,
+        )
+        > 0
+    )
+
+
+def is_present(
+    attendance_events: Iterable[AttendanceEvent],
+    attendee: str,
+) -> bool:
+    """
+    Return True if the attendee participated in the session.
+
+    Participation is the domain definition of presence.
+    """
+
+    return participant_exists(
+        attendance_events,
+        attendee,
+    )
+
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+
+def attendance_summary(
+    attendance_events: Iterable[AttendanceEvent],
+) -> dict[str, object]:
+    """
+    Return a summary of attendance participation.
+    """
+
+    events = get_attendance_events(
+        attendance_events,
+    )
+
+    participants = get_participants(
+        events,
+    )
+
+    return {
+        "attendance_event_count": len(events),
+        "participant_count": len(participants),
+        "participants": participants,
+        "first_attendance": first_attendance_event(events),
+        "last_attendance": last_attendance_event(events),
+        "first_participant": first_participant(events),
+        "last_participant": last_participant(events),
+    }
+
+
+# ============================================================================
+# Convenience
+# ============================================================================
+
+
+def attendance_rate(
     attendance_events: Iterable[AttendanceEvent],
     expected_attendees: int,
 ) -> float:
     """
-    Calculate attendance percentage.
+    Return participation rate as a percentage.
+
+    Attendance is based on unique participants.
     """
 
     if expected_attendees <= 0:
         return 0.0
 
-    present = count_unique_attendees(
-        attendance_events,
-    )
-
     return round(
-        (present / expected_attendees) * 100,
+        (
+            count_participants(
+                attendance_events,
+            )
+            / expected_attendees
+        )
+        * 100,
         2,
     )
-
-
-def calculate_member_attendance_rate(
-    member: Member,
-    attendance_events: Iterable[AttendanceEvent],
-) -> float:
-    """
-    Calculate attendance percentage
-    for a single member.
-    """
-
-    member_events = tuple(
-        event
-        for event in attendance_events
-        if event.attendee.casefold() == member.normalized_name
-    )
-
-    if not member_events:
-        return 0.0
-
-    attended = sum(event.is_present or event.is_late for event in member_events)
-
-    return round(
-        (attended / len(member_events)) * 100,
-        2,
-    )
-
-
-# ============================================================================
-# Attendance Classification
-# ============================================================================
-
-
-def count_attendance_types(
-    attendance_events: Iterable[AttendanceEvent],
-) -> Counter[AttendanceType]:
-    """
-    Count attendance events grouped by
-    AttendanceType.
-    """
-
-    return Counter(event.attendance_type for event in attendance_events)

@@ -5,36 +5,35 @@ Domain Done Analytics
 
 Purpose
 -------
-Provides pure business logic for Done acknowledgement analytics.
+Provides business logic for Scripture Reading acknowledgement analytics.
 
 Responsibilities
 ----------------
-- Filter Done events.
-- Count Done events.
-- Determine first and last Done acknowledgements.
-- Remove duplicate Done events according to business rules.
-- Remain technology independent.
+- Retrieve Done acknowledgement events.
+- Count Done acknowledgements.
+- Count acknowledgements by member.
+- Rank members by acknowledgement count.
+- Support reporting-period analysis.
+- Preserve every Done acknowledgement as an independent event.
 
-Rules
------
-- No pandas.
-- No Streamlit.
-- No plotting.
-- No file I/O.
-- No infrastructure dependencies.
-
-Business Rules
---------------
-- Every Done acknowledgement is counted.
-- Multiple Done messages from the same attendee are valid.
-- Only an identical attendee AND identical timestamp is treated
-  as a duplicate.
-- Same attendee with different timestamps counts as separate Done
-  acknowledgements.
+Domain Rules
+------------
+- A DoneEvent represents one Scripture Reading acknowledgement.
+- Every DoneEvent counts independently.
+- Multiple DoneEvents from the same member must not be deduplicated.
+- Done acknowledgements are independent of session boundaries.
+- Session detection determines when a Scripture Reading activity occurs,
+  but Done acknowledgements may refer to the current or a previous reading.
+- Weekly and monthly Done totals are therefore based on the reporting period,
+  not on session membership.
 
 Notes
 -----
-- Operates only on immutable Domain models.
+- Pure domain analytics.
+- No pandas.
+- No Streamlit.
+- No database access.
+- No file I/O.
 """
 
 from __future__ import annotations
@@ -42,16 +41,18 @@ from __future__ import annotations
 # ============================================================================
 # Standard Library Imports
 # ============================================================================
+from collections import Counter
 from collections.abc import Iterable
+from datetime import date, datetime
 
 # ============================================================================
 # Local Imports
 # ============================================================================
 from src.domain.models.done_event import DoneEvent
 
-# ------------------------------------------------------------------
+# ============================================================================
 # Retrieval
-# ------------------------------------------------------------------
+# ============================================================================
 
 
 def get_done_events(
@@ -69,226 +70,241 @@ def get_done_events(
     )
 
 
-# ------------------------------------------------------------------
-# Duplicate Handling
-# ------------------------------------------------------------------
-
-
-def unique_done_events(
+def get_done_events_for_member(
     done_events: Iterable[DoneEvent],
+    attendee: str,
 ) -> tuple[DoneEvent, ...]:
     """
-    Return Done events with duplicate timestamps removed.
+    Return all Done events belonging to a member.
 
-    Duplicate Definition
-    --------------------
-    Duplicate means:
-
-        attendee + timestamp
-
-    If the timestamp differs, the Done acknowledgement
-    remains valid and is retained.
+    Matching is case-insensitive.
     """
 
-    unique: list[DoneEvent] = []
-    seen: set[tuple[str, object]] = set()
+    normalized = attendee.casefold()
 
-    for event in get_done_events(done_events):
-
-        key = (
-            event.attendee.casefold(),
-            event.timestamp,
-        )
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-        unique.append(event)
-
-    return tuple(unique)
+    return tuple(
+        event
+        for event in get_done_events(done_events)
+        if event.attendee.casefold() == normalized
+    )
 
 
-# ------------------------------------------------------------------
+def get_done_events_between(
+    done_events: Iterable[DoneEvent],
+    start: datetime,
+    end: datetime,
+) -> tuple[DoneEvent, ...]:
+    """
+    Return Done events within a datetime range.
+
+    The range is inclusive at both boundaries.
+    """
+
+    return tuple(
+        event
+        for event in get_done_events(done_events)
+        if start <= event.timestamp <= end
+    )
+
+
+def get_done_events_on_date(
+    done_events: Iterable[DoneEvent],
+    event_date: date,
+) -> tuple[DoneEvent, ...]:
+    """
+    Return Done events recorded on a specific date.
+    """
+
+    return tuple(
+        event
+        for event in get_done_events(done_events)
+        if event.event_date == event_date
+    )
+
+
+# ============================================================================
 # Counts
-# ------------------------------------------------------------------
+# ============================================================================
 
 
 def count_done_events(
     done_events: Iterable[DoneEvent],
 ) -> int:
     """
-    Return the total number of valid Done events.
+    Return the total number of Done acknowledgements.
 
-    Duplicate Done acknowledgements are ignored using
-    the Domain duplicate rule.
+    Every DoneEvent counts independently.
     """
 
-    return len(unique_done_events(done_events))
+    return len(get_done_events(done_events))
 
 
-# ------------------------------------------------------------------
-# Timeline
-# ------------------------------------------------------------------
-
-
-def first_done_event(
-    done_events: Iterable[DoneEvent],
-) -> DoneEvent | None:
-    """
-    Return the first valid Done acknowledgement.
-
-    Returns
-    -------
-    DoneEvent | None
-    """
-
-    events = unique_done_events(done_events)
-
-    if not events:
-        return None
-
-    return events[0]
-
-
-# ------------------------------------------------------------------
-# Timeline
-# ------------------------------------------------------------------
-
-
-def last_done_event(
-    done_events: Iterable[DoneEvent],
-) -> DoneEvent | None:
-    """
-    Return the last valid Done acknowledgement.
-
-    Returns
-    -------
-    DoneEvent | None
-    """
-
-    events = unique_done_events(done_events)
-
-    if not events:
-        return None
-
-    return events[-1]
-
-
-# ------------------------------------------------------------------
-# Attendee Analytics
-# ------------------------------------------------------------------
-
-
-def done_attendees(
-    done_events: Iterable[DoneEvent],
-) -> tuple[str, ...]:
-    """
-    Return attendees that submitted a Done acknowledgement.
-
-    Order is preserved according to the first valid
-    Done acknowledgement.
-    """
-
-    attendees: list[str] = []
-    seen: set[str] = set()
-
-    for event in unique_done_events(done_events):
-
-        key = event.attendee.casefold()
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-        attendees.append(event.attendee)
-
-    return tuple(attendees)
-
-
-def done_count_by_attendee(
+def count_done_for_member(
     done_events: Iterable[DoneEvent],
     attendee: str,
 ) -> int:
     """
-    Return the number of valid Done acknowledgements
-    submitted by an attendee.
-
-    Different timestamps are counted separately.
+    Return the total number of Done acknowledgements
+    recorded by a member.
     """
 
-    normalized = attendee.casefold()
-
-    return sum(
-        event.attendee.casefold() == normalized
-        for event in unique_done_events(done_events)
+    return len(
+        get_done_events_for_member(
+            done_events,
+            attendee,
+        )
     )
 
 
-def has_done_event(
+def count_done_by_member(
     done_events: Iterable[DoneEvent],
-) -> bool:
+) -> Counter[str]:
     """
-    Return True if at least one valid Done event exists.
+    Count Done acknowledgements by member.
+
+    Member names are normalized for case-insensitive
+    counting while preserving the first encountered
+    display name.
     """
 
-    return bool(unique_done_events(done_events))
+    counts: Counter[str] = Counter()
+    display_names: dict[str, str] = {}
+
+    for event in get_done_events(done_events):
+        key = event.attendee.casefold()
+
+        if key not in display_names:
+            display_names[key] = event.attendee
+
+        counts[display_names[key]] += 1
+
+    return counts
 
 
-# ------------------------------------------------------------------
+def unique_done_member_count(
+    done_events: Iterable[DoneEvent],
+) -> int:
+    """
+    Return the number of unique members with at least
+    one Done acknowledgement.
+    """
+
+    return len(count_done_by_member(done_events))
+
+
+# ============================================================================
+# Ranking
+# ============================================================================
+
+
+def rank_members_by_done_count(
+    done_events: Iterable[DoneEvent],
+) -> tuple[tuple[str, int], ...]:
+    """
+    Rank members by total Done acknowledgements.
+
+    Members with equal counts are ordered alphabetically.
+    """
+
+    counts = count_done_by_member(done_events)
+
+    return tuple(
+        sorted(
+            counts.items(),
+            key=lambda item: (
+                -item[1],
+                item[0].casefold(),
+            ),
+        )
+    )
+
+
+def top_done_members(
+    done_events: Iterable[DoneEvent],
+    limit: int = 10,
+) -> tuple[tuple[str, int], ...]:
+    """
+    Return the members with the highest Done counts.
+    """
+
+    if limit < 1:
+        raise ValueError("limit must be greater than zero.")
+
+    return rank_members_by_done_count(done_events)[:limit]
+
+
+# ============================================================================
+# Period Analytics
+# ============================================================================
+
+
+def done_count_by_date(
+    done_events: Iterable[DoneEvent],
+) -> Counter[date]:
+    """
+    Count Done acknowledgements by calendar date.
+    """
+
+    return Counter(event.event_date for event in done_events)
+
+
+def done_count_by_period(
+    done_events: Iterable[DoneEvent],
+    start_date: date,
+    end_date: date,
+) -> int:
+    """
+    Return the number of Done acknowledgements
+    within an inclusive date range.
+
+    This is independent of session boundaries.
+    """
+
+    if start_date > end_date:
+        raise ValueError("start_date cannot be later than end_date.")
+
+    return sum(1 for event in done_events if start_date <= event.event_date <= end_date)
+
+
+def done_count_by_member_for_period(
+    done_events: Iterable[DoneEvent],
+    start_date: date,
+    end_date: date,
+) -> Counter[str]:
+    """
+    Count Done acknowledgements by member
+    within an inclusive reporting period.
+
+    Every acknowledgement is counted independently.
+    """
+
+    if start_date > end_date:
+        raise ValueError("start_date cannot be later than end_date.")
+
+    return count_done_by_member(
+        event for event in done_events if start_date <= event.event_date <= end_date
+    )
+
+
+# ============================================================================
 # Summary
-# ------------------------------------------------------------------
+# ============================================================================
 
 
 def done_summary(
     done_events: Iterable[DoneEvent],
 ) -> dict[str, object]:
     """
-    Return a summary of Done acknowledgements.
+    Return a summary of Done acknowledgement analytics.
     """
 
-    events = unique_done_events(done_events)
+    events = get_done_events(done_events)
 
     return {
         "done_count": len(events),
-        "unique_attendees": len(done_attendees(events)),
-        "first_done": first_done_event(events),
-        "last_done": last_done_event(events),
+        "unique_member_count": unique_done_member_count(events),
+        "done_by_member": count_done_by_member(events),
+        "done_by_date": done_count_by_date(events),
+        "first_done": events[0] if events else None,
+        "last_done": events[-1] if events else None,
     }
-
-
-# ------------------------------------------------------------------
-# Convenience
-# ------------------------------------------------------------------
-
-
-def first_done_attendee(
-    done_events: Iterable[DoneEvent],
-) -> str | None:
-    """
-    Return the attendee that submitted the first
-    valid Done acknowledgement.
-    """
-
-    event = first_done_event(done_events)
-
-    if event is None:
-        return None
-
-    return event.attendee
-
-
-def last_done_attendee(
-    done_events: Iterable[DoneEvent],
-) -> str | None:
-    """
-    Return the attendee that submitted the last
-    valid Done acknowledgement.
-    """
-
-    event = last_done_event(done_events)
-
-    if event is None:
-        return None
-
-    return event.attendee
