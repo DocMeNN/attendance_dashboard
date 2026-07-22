@@ -67,6 +67,10 @@ python_files = [
     "test_*.py"
 ]
 
+pythonpath = [
+    "."
+]
+
 [tool.black]
 line-length = 88
 target-version = ["py314"]
