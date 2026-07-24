@@ -9,15 +9,18 @@ Displays activity analytics for the active ministry session.
 
 Responsibilities
 ----------------
+- Coordinate activity presentation workflows.
 - Display activity KPIs.
 - Display activity distribution.
 - Display session activity summary.
+- Delegate activity workflows to ActivityViewModel.
 
 Architectural Rules
 -------------------
 - Presentation only.
 - No business logic.
 - No analytics calculations.
+- No infrastructure access.
 """
 
 from __future__ import annotations
@@ -68,18 +71,22 @@ def render() -> None:
     session = context.current_session()
 
     if session is None:
-        st.error("Unable to retrieve the active session.")
+        st.error(
+            "Unable to retrieve the active session.",
+        )
         return
 
-    dashboard = context.dashboard_service()
+    activity_viewmodel = context.activity_viewmodel()
 
-    activity = dashboard.activity_summary(
-        session,
+    activity = activity_viewmodel.activity_data(
+        session=session,
     )
 
-    summary = dashboard.dashboard_summary(
-        session,
-        context.expected_attendees(),
+    dashboard_viewmodel = context.dashboard_viewmodel()
+
+    summary = dashboard_viewmodel.dashboard_summary(
+        session=session,
+        expected_attendees=context.expected_attendees(),
     )
 
     # =========================================================================
@@ -143,7 +150,7 @@ def render() -> None:
                 None,
                 "Attendance rate",
             ),
-        ]
+        ],
     )
 
     st.divider()
@@ -191,7 +198,7 @@ def render() -> None:
     tables.render_dataframe(
         formatters.session_summary(
             session,
-        )
+        ),
     )
 
     st.divider()
@@ -209,7 +216,7 @@ def render() -> None:
         formatters.highlight_records(
             session=session,
             summary=summary,
-        )
+        ),
     )
 
     st.divider()

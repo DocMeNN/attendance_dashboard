@@ -1,7 +1,7 @@
 # src/presentation/pages/ministry_ai_panel.py
 
 """
-AAM Report Page
+AI Ministry Report Page
 
 Purpose
 -------
@@ -12,13 +12,14 @@ Responsibilities
 - Render AI leadership reports.
 - Generate executive ministry summaries.
 - Display strategic recommendations.
+- Delegate report data preparation to AIViewModel.
 - Delegate AI execution to presentation components.
 
 Architectural Rules
 -------------------
 - Presentation only.
 - No business logic.
-- No analytics.
+- No analytics calculations.
 - No AI provider communication.
 """
 
@@ -35,16 +36,15 @@ import streamlit as st
 from src.presentation import context
 from src.presentation.components.ai import ministry_ai_panel
 from src.presentation.components.common import metric_cards
-from src.presentation.viewmodels.ai_viewmodel import AIViewModel
 
 # ============================================================================
-# AAM Report Page
+# AI Ministry Report Page
 # ============================================================================
 
 
 def render() -> None:
     """
-    Render the AAM report page.
+    Render the AI Ministry Report page.
     """
 
     context.initialize()
@@ -65,38 +65,25 @@ def render() -> None:
         )
         return
 
-    dashboard = context.dashboard_service()
+    dashboard_viewmodel = context.dashboard_viewmodel()
 
-    expected = context.expected_attendees()
-
-    dashboard_summary = dashboard.dashboard_summary(
-        session,
-        expected,
-    )
-
-    attendance = dashboard.attendance_summary(
-        session,
-        expected,
-    )
-
-    activity = dashboard.activity_summary(
-        session,
-    )
-
-    viewmodel = AIViewModel(
-        controller=context.ai_controller(),
-    )
-
-    report = viewmodel.build_executive_report(
+    report_data = dashboard_viewmodel.get_dashboard(
         session=session,
-        dashboard_summary=dashboard_summary,
-        attendance=attendance,
-        activity=activity,
+        expected_attendees=context.expected_attendees(),
+    )
+
+    ai_viewmodel = context.ai_viewmodel()
+
+    report = ai_viewmodel.build_executive_report(
+        session=session,
+        dashboard_summary=report_data["dashboard"],
+        attendance=report_data["attendance"],
+        activity=report_data["activity"],
     )
 
     metric_cards.render_section_header(
         "AI Ministry Leadership Report",
-        ("Generate an AI-assisted report suitable " "for ministry leadership."),
+        "Generate an AI-assisted report suitable for ministry leadership.",
     )
 
     ministry_ai_panel.render(

@@ -1,3 +1,5 @@
+# src/presentation/components/attendance/overview.py
+
 """
 Attendance Overview Component
 

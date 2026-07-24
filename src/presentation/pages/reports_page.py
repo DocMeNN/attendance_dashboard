@@ -9,17 +9,20 @@ Displays reporting and AI executive reporting for the active session.
 
 Responsibilities
 ----------------
+- Coordinate report presentation workflows.
 - Display report metrics.
 - Display session summary.
 - Display AI executive report generation.
 - Display export roadmap.
+- Delegate report workflows to ReportViewModel.
 
 Architectural Rules
 -------------------
 - Presentation only.
 - No business logic.
-- No analytics.
+- No analytics calculations.
 - No report generation.
+- No file I/O.
 """
 
 from __future__ import annotations
@@ -29,18 +32,16 @@ from __future__ import annotations
 # ============================================================================
 import streamlit as st
 
-from src.presentation import context
-from src.presentation.components.ai import ministry_ai_panel
-
 # ============================================================================
 # Local Imports
 # ============================================================================
+from src.presentation import context
+from src.presentation.components.ai import ministry_ai_panel
 from src.presentation.components.common import (
     metric_cards,
     tables,
 )
 from src.presentation.utils import formatters
-from src.presentation.viewmodels.ai_viewmodel import AIViewModel
 
 # ============================================================================
 # Reports Page
@@ -70,27 +71,20 @@ def render() -> None:
         )
         return
 
-    dashboard = context.dashboard_service()
+    expected_attendees = context.expected_attendees()
 
-    expected = context.expected_attendees()
+    report_viewmodel = context.report_viewmodel()
 
-    summary = dashboard.dashboard_summary(
-        session,
-        expected,
+    report_data = report_viewmodel.report_data(
+        session=session,
+        expected_attendees=expected_attendees,
     )
 
-    attendance = dashboard.attendance_summary(
-        session,
-        expected,
-    )
+    summary = report_data["dashboard"]
 
-    activity = dashboard.activity_summary(
-        session,
-    )
-
-    # =====================================================================
+    # ========================================================================
     # Report Overview
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Report Overview",
@@ -105,9 +99,9 @@ def render() -> None:
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # Session Summary
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Session Summary",
@@ -117,14 +111,14 @@ def render() -> None:
     tables.render_dataframe(
         formatters.session_summary(
             session,
-        )
+        ),
     )
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # Session Highlights
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Session Highlights",
@@ -135,24 +129,22 @@ def render() -> None:
         formatters.highlight_records(
             session=session,
             summary=summary,
-        )
+        ),
     )
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # AI Executive Summary
-    # =====================================================================
+    # ========================================================================
 
-    viewmodel = AIViewModel(
-        controller=context.ai_controller(),
-    )
+    ai_viewmodel = context.ai_viewmodel()
 
-    report = viewmodel.build_executive_report(
+    report = ai_viewmodel.build_executive_report(
         session=session,
-        dashboard_summary=summary,
-        attendance=attendance,
-        activity=activity,
+        dashboard_summary=report_data["dashboard"],
+        attendance=report_data["attendance"],
+        activity=report_data["activity"],
     )
 
     metric_cards.render_section_header(
@@ -178,9 +170,9 @@ def render() -> None:
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # Export
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Export",
@@ -198,9 +190,9 @@ def render() -> None:
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # Footer
-    # =====================================================================
+    # ========================================================================
 
     left_column, right_column = st.columns([3, 1])
 

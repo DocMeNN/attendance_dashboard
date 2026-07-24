@@ -1,3 +1,5 @@
+# src/presentation/components/attendance/distribution.py
+
 """
 Attendance Distribution Component
 

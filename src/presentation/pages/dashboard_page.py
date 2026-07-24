@@ -9,18 +9,20 @@ Displays the primary dashboard for a meeting session.
 
 Responsibilities
 ----------------
+- Coordinate dashboard presentation workflows.
 - Display dashboard metrics.
 - Display attendance analytics.
 - Display activity analytics.
 - Display session overview.
 - Display AI-powered ministry insights.
+- Delegate application workflows to DashboardViewModel.
 - Delegate rendering to reusable presentation components.
 
 Architectural Rules
 -------------------
 - Presentation only.
 - No business logic.
-- No analytics.
+- No analytics calculations.
 - No infrastructure access.
 """
 
@@ -37,19 +39,17 @@ from typing import Any, cast
 # ============================================================================
 import streamlit as st
 
-from src.presentation import context
-from src.presentation.components.ai import ministry_ai_panel
-
 # ============================================================================
 # Local Imports
 # ============================================================================
+from src.presentation import context
+from src.presentation.components.ai import ministry_ai_panel
 from src.presentation.components.common import (
     charts,
     metric_cards,
     tables,
 )
 from src.presentation.utils import formatters
-from src.presentation.viewmodels.ai_viewmodel import AIViewModel
 
 # ============================================================================
 # Dashboard Page
@@ -58,7 +58,7 @@ from src.presentation.viewmodels.ai_viewmodel import AIViewModel
 
 def render() -> None:
     """
-    Render the dashboard page.
+    Render the Dashboard page.
     """
 
     context.initialize()
@@ -80,27 +80,33 @@ def render() -> None:
         )
         return
 
-    dashboard = context.dashboard_service()
+    viewmodel = context.dashboard_viewmodel()
 
-    expected = context.expected_attendees()
+    expected_attendees = context.expected_attendees()
 
-    summary = dashboard.dashboard_summary(
-        session,
-        expected,
+    dashboard_data = viewmodel.get_dashboard(
+        session=session,
+        expected_attendees=expected_attendees,
     )
 
-    attendance = dashboard.attendance_summary(
-        session,
-        expected,
+    summary = cast(
+        dict[str, Any],
+        dashboard_data["dashboard"],
     )
 
-    activity = dashboard.activity_summary(
-        session,
+    attendance = cast(
+        dict[str, Any],
+        dashboard_data["attendance"],
     )
 
-    # =====================================================================
+    activity = cast(
+        dict[str, Any],
+        dashboard_data["activity"],
+    )
+
+    # ========================================================================
     # Overview
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Overview",
@@ -115,9 +121,9 @@ def render() -> None:
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # AI Ministry Intelligence
-    # =====================================================================
+    # ========================================================================
 
     try:
 
@@ -126,19 +132,17 @@ def render() -> None:
             "Generate an AI-powered summary of the current meeting session.",
         )
 
-        viewmodel = AIViewModel(
-            controller=context.ai_controller(),
-        )
+        ai_viewmodel = context.ai_viewmodel()
 
-        session_information = viewmodel.build_session_information(
+        session_information = ai_viewmodel.build_session_information(
             session=session,
         )
 
-        attendance_summary = viewmodel.build_attendance_summary(
+        attendance_summary = ai_viewmodel.build_attendance_summary(
             attendance=attendance,
         )
 
-        activity_summary = viewmodel.build_activity_summary(
+        activity_summary = ai_viewmodel.build_activity_summary(
             activity=activity,
         )
 
@@ -162,13 +166,15 @@ def render() -> None:
 
     except Exception as exc:
 
-        st.error("Unable to load the AI Ministry Intelligence panel.")
+        st.error(
+            "Unable to load the AI Ministry Intelligence panel.",
+        )
 
         st.exception(exc)
 
-    # =====================================================================
+    # ========================================================================
     # Attendance Analytics
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Attendance Analytics",
@@ -197,9 +203,9 @@ def render() -> None:
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # Activity Analytics
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Activity Analytics",
@@ -228,9 +234,9 @@ def render() -> None:
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # Session Overview
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Session Overview",
@@ -247,9 +253,9 @@ def render() -> None:
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # Session Highlights
-    # =====================================================================
+    # ========================================================================
 
     metric_cards.render_section_header(
         "Session Highlights",
@@ -267,9 +273,9 @@ def render() -> None:
 
     st.divider()
 
-    # =====================================================================
+    # ========================================================================
     # Footer
-    # =====================================================================
+    # ========================================================================
 
     left_column, right_column = st.columns([3, 1])
 

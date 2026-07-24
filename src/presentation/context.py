@@ -13,7 +13,7 @@ Responsibilities
 - Store the active Session aggregate.
 - Provide access to application services.
 - Provide access to presentation controllers.
-- Provide access to presentation view models.
+- Provide access to presentation ViewModels.
 - Store presentation configuration values.
 - Act as the bridge between the UI and the Application layer.
 
@@ -50,7 +50,15 @@ from src.application.services.report_service import ReportService
 from src.config.ai_config import load_ai_config
 from src.domain.models.session import Session
 from src.presentation.controllers.ai_controller import AIController
+from src.presentation.viewmodels.activity_viewmodel import ActivityViewModel
 from src.presentation.viewmodels.ai_viewmodel import AIViewModel
+from src.presentation.viewmodels.attendance_viewmodel import (
+    AttendanceViewModel,
+)
+from src.presentation.viewmodels.dashboard_viewmodel import (
+    DashboardViewModel,
+)
+from src.presentation.viewmodels.report_viewmodel import ReportViewModel
 
 # ============================================================================
 # Session State Keys
@@ -66,8 +74,14 @@ _REPORT_SERVICE_KEY: Final = "report_service"
 _IMPORT_SERVICE_KEY: Final = "import_service"
 
 _AI_SERVICE_KEY: Final = "ai_service"
+
 _AI_CONTROLLER_KEY: Final = "ai_controller"
+
 _AI_VIEWMODEL_KEY: Final = "ai_viewmodel"
+_ATTENDANCE_VIEWMODEL_KEY: Final = "attendance_viewmodel"
+_ACTIVITY_VIEWMODEL_KEY: Final = "activity_viewmodel"
+_DASHBOARD_VIEWMODEL_KEY: Final = "dashboard_viewmodel"
+_REPORT_VIEWMODEL_KEY: Final = "report_viewmodel"
 
 # ============================================================================
 # Initialization
@@ -76,12 +90,16 @@ _AI_VIEWMODEL_KEY: Final = "ai_viewmodel"
 
 def initialize() -> None:
     """
-    Initialize the presentation context.
+    Initialize the Presentation Context.
 
     Safe to call multiple times.
     """
 
     state = st.session_state
+
+    # ------------------------------------------------------------------------
+    # Session State
+    # ------------------------------------------------------------------------
 
     state.setdefault(
         _SESSION_KEY,
@@ -92,6 +110,10 @@ def initialize() -> None:
         _EXPECTED_ATTENDEES_KEY,
         0,
     )
+
+    # ------------------------------------------------------------------------
+    # Application Services
+    # ------------------------------------------------------------------------
 
     state.setdefault(
         _ATTENDANCE_SERVICE_KEY,
@@ -145,6 +167,10 @@ def initialize() -> None:
         ),
     )
 
+    # ------------------------------------------------------------------------
+    # AI
+    # ------------------------------------------------------------------------
+
     state.setdefault(
         _AI_SERVICE_KEY,
         AIService(
@@ -162,6 +188,10 @@ def initialize() -> None:
         ),
     )
 
+    # ------------------------------------------------------------------------
+    # ViewModels
+    # ------------------------------------------------------------------------
+
     state.setdefault(
         _AI_VIEWMODEL_KEY,
         AIViewModel(
@@ -172,13 +202,55 @@ def initialize() -> None:
         ),
     )
 
+    state.setdefault(
+        _ATTENDANCE_VIEWMODEL_KEY,
+        AttendanceViewModel(
+            attendance_service=cast(
+                AttendanceService,
+                state[_ATTENDANCE_SERVICE_KEY],
+            ),
+        ),
+    )
+
+    state.setdefault(
+        _ACTIVITY_VIEWMODEL_KEY,
+        ActivityViewModel(
+            activity_service=cast(
+                ActivityService,
+                state[_ACTIVITY_SERVICE_KEY],
+            ),
+        ),
+    )
+
+    state.setdefault(
+        _DASHBOARD_VIEWMODEL_KEY,
+        DashboardViewModel(
+            dashboard_service=cast(
+                DashboardService,
+                state[_DASHBOARD_SERVICE_KEY],
+            ),
+        ),
+    )
+
+    state.setdefault(
+        _REPORT_VIEWMODEL_KEY,
+        ReportViewModel(
+            report_service=cast(
+                ReportService,
+                state[_REPORT_SERVICE_KEY],
+            ),
+        ),
+    )
+
 
 # ============================================================================
 # Session
 # ============================================================================
 
 
-def set_session(session: Session) -> None:
+def set_session(
+    session: Session,
+) -> None:
     """
     Store the active Session.
     """
@@ -213,7 +285,9 @@ def clear_session() -> None:
     st.session_state[_SESSION_KEY] = None
 
 
-def set_expected_attendees(value: int) -> None:
+def set_expected_attendees(
+    value: int,
+) -> None:
     """
     Store the expected attendee count.
     """
@@ -233,7 +307,7 @@ def expected_attendees() -> int:
 
 
 # ============================================================================
-# Services
+# Application Services
 # ============================================================================
 
 
@@ -320,7 +394,7 @@ def ai_controller() -> AIController:
 
 
 # ============================================================================
-# View Models
+# ViewModels
 # ============================================================================
 
 
@@ -332,6 +406,50 @@ def ai_viewmodel() -> AIViewModel:
     return cast(
         AIViewModel,
         st.session_state[_AI_VIEWMODEL_KEY],
+    )
+
+
+def attendance_viewmodel() -> AttendanceViewModel:
+    """
+    Return the shared AttendanceViewModel.
+    """
+
+    return cast(
+        AttendanceViewModel,
+        st.session_state[_ATTENDANCE_VIEWMODEL_KEY],
+    )
+
+
+def activity_viewmodel() -> ActivityViewModel:
+    """
+    Return the shared ActivityViewModel.
+    """
+
+    return cast(
+        ActivityViewModel,
+        st.session_state[_ACTIVITY_VIEWMODEL_KEY],
+    )
+
+
+def dashboard_viewmodel() -> DashboardViewModel:
+    """
+    Return the shared DashboardViewModel.
+    """
+
+    return cast(
+        DashboardViewModel,
+        st.session_state[_DASHBOARD_VIEWMODEL_KEY],
+    )
+
+
+def report_viewmodel() -> ReportViewModel:
+    """
+    Return the shared ReportViewModel.
+    """
+
+    return cast(
+        ReportViewModel,
+        st.session_state[_REPORT_VIEWMODEL_KEY],
     )
 
 
@@ -355,4 +473,8 @@ __all__ = [
     "ai_service",
     "ai_controller",
     "ai_viewmodel",
+    "attendance_viewmodel",
+    "activity_viewmodel",
+    "dashboard_viewmodel",
+    "report_viewmodel",
 ]
